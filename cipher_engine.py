@@ -1,8 +1,10 @@
-#Today(5/13) We are moving to finish cryptoEngine, and hopefully move forward.
+#Today(5/14) There are little bit of phase changed compared to original plan, but just adding Korean layer earlier or later it is same thing any way.
+#Adding Ceaser cipher first.
+#We are going to wrapping up phase I, and move to phase II
+#My agents are driving me crazy since in the morning, at least they listened to me lol.
 
-import sympy
 import secrets
-import unicodedata
+
 
 #RFC3526 - 1536 bit safe prime
 P_Hex ="""
@@ -61,20 +63,50 @@ class CryptoEngine:
         session_shift = (c2 * s_inv) % self.p
         return session_shift
 
+    def apply_caesar(self, text, raw_shift, decrypt=False):
+        shift = (raw_shift % 26)
+        if decrypt: shift = -shift
+
+        result = []
+        for char in text:
+            if char.isalpha():
+                base = 65 if char.isupper() else 97
+                result.append(chr((ord(char) - base + shift) % 26 + base))
+            else:
+                result.append(char)
+        return "".join(result)
+
+    def send_message(self, plaintext, recipient_public_key):
+        session_shift = secrets.randbelow(26)
+        ciphertext = self.apply_caesar(plaintext, session_shift, decrypt = False)
+        c1, c2 = self.encrypt_key(session_shift, recipient_public_key)
+        return ciphertext, c1, c2
+
+    def receive_message(self, ciphertext, c1, c2, recipient_private_key):
+        recovered_shift = self.decrypt_key(c1, c2, recipient_private_key)
+        plaintext = self.apply_caesar(ciphertext, recovered_shift, decrypt=True)
+        return plaintext
+
+
 #Test
 if __name__ == "__main__":
     engine = CryptoEngine()
 
     pub_key, priv_key = engine.generate_keypair()
 
-    print(f"---ElGamal Key Generation Test ---")
+    message = "Hello, EVE!"
 
-    my_secret_code = 42
-    c1, c2 = engine.encrypt_key(my_secret_code, pub_key)
-    decrypted_code = engine.decrypt_key(c1, c2, priv_key)
+    secret_shift = secrets.randbelow(26)
 
-    print(f"Original: {my_secret_code}")
-    print(f"Decrypted: {decrypted_code}")
+    ciphertext, c1, c2 = engine.send_message(message, pub_key)
 
-    assert my_secret_code == decrypted_code
-    print("Success")
+    print(f"---[Sender] ---")
+    print(f"Encrypted Text: {ciphertext}")
+
+    decrypted_msg = engine.receive_message(ciphertext, c1, c2, priv_key)
+
+    print(f"\n--- [Receiver] ---")
+    print(f"Decrypted Text: {decrypted_msg}")
+
+    assert message == decrypted_msg, "Logic Failed!"
+    print("\nVerification: Success!")
