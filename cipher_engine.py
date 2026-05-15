@@ -4,7 +4,7 @@
 #My agents are driving me crazy since in the morning, at least they listened to me lol.
 
 import secrets
-
+from db_manager import DBManager
 
 #RFC3526 - 1536 bit safe prime
 P_Hex ="""
@@ -91,22 +91,10 @@ class CryptoEngine:
 #Test
 if __name__ == "__main__":
     engine = CryptoEngine()
+    db = DBManager()
 
     pub_key, priv_key = engine.generate_keypair()
 
-    message = "Hello, EVE!"
-
-    secret_shift = secrets.randbelow(26)
-
-    ciphertext, c1, c2 = engine.send_message(message, pub_key)
-
-    print(f"---[Sender] ---")
-    print(f"Encrypted Text: {ciphertext}")
-
-    decrypted_msg = engine.receive_message(ciphertext, c1, c2, priv_key)
-
-    print(f"\n--- [Receiver] ---")
-    print(f"Decrypted Text: {decrypted_msg}")
-
-    assert message == decrypted_msg, "Logic Failed!"
-    print("\nVerification: Success!")
+    print("---DB Registration---")
+    db.register_profile("Alice", pub_key)
+    print("Success, check your table in dashboard")
