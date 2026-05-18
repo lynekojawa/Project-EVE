@@ -1,7 +1,4 @@
-#Today(5/14) There are little bit of phase changed compared to original plan, but just adding Korean layer earlier or later it is same thing any way.
-#Adding Ceaser cipher first.
-#We are going to wrapping up phase I, and move to phase II
-#My agents are driving me crazy since in the morning, at least they listened to me lol.
+#Today(5/18) We are heading to dealing with db_manager with supabase again.
 
 import secrets
 from db_manager import DBManager
