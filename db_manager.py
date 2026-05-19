@@ -15,15 +15,22 @@ class DBManager:
 
         self.client: Client = create_client(url, key)
 
-    def register_profile(self, username: str, public_key: int) -> bool:
+    def register_profile(self, username: str, public_key: int) -> tuple:
         try:
             data = {"username": username, "public_key_h": str(public_key)}
-            self.client.table("eve_profiles").upsert(data).execute()
+            self.client.table("eve_profiles").insert(data).execute()
             logger.info(f"Successfully registered user: {username}")
-            return True
+            return True, "Success"
+
         except APIError as e:
+
+            if e.code == '23505':
+                logger.warning(f"Registration failed: Username '{username}' already exists.")
+                return False, "Username already exists"
+
             logger.error(f"Database error during registration: {e}")
-            return False
+
+            return False, "Database error"
 
     def upload_message(self, sender: str, recipient: str, ciphertext: str, encrypted_key_json: str) -> bool:
         try:
@@ -37,7 +44,7 @@ class DBManager:
             logger.info(f"Message sent from {sender} to {recipient}")
             return True
         except Exception as e:
-            logger.error(f"Failed to uploade message: {e}")
+            logger.error(f"Failed to upload message: {e}")
             return False
 
     def fetch_messages(self, recipient: str)-> list:

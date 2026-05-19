@@ -1,6 +1,7 @@
-#Today(5/18) We are heading to dealing with db_manager with supabase again.
+#Today(5/19) Phase 3 UI building in project EVE
 
 import secrets
+import json
 from db_manager import DBManager
 
 #RFC3526 - 1536 bit safe prime
@@ -77,11 +78,20 @@ class CryptoEngine:
         session_shift = secrets.randbelow(26)
         ciphertext = self.apply_caesar(plaintext, session_shift, decrypt = False)
         c1, c2 = self.encrypt_key(session_shift, recipient_public_key)
-        return ciphertext, c1, c2
 
-    def receive_message(self, ciphertext, c1, c2, recipient_private_key):
+        key_payload = json.dumps({"c1": c1, "c2": c2})
+
+        return ciphertext, key_payload
+
+
+    def receive_message(self, ciphertext, encrypted_key_json, recipient_private_key):
+        key_data = json.loads(encrypted_key_json)
+        c1 = key_data['c1']
+        c2 = key_data['c2']
+
         recovered_shift = self.decrypt_key(c1, c2, recipient_private_key)
         plaintext = self.apply_caesar(ciphertext, recovered_shift, decrypt=True)
+
         return plaintext
 
 
