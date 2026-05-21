@@ -70,6 +70,16 @@ class DBManager:
             logger.error(f"Failed to fetch profile: {e}")
             return None
 
+    def delete_message(self, message_id: str) -> bool:
+        """Permanently purges an encrypted message row from the cloud vault."""
+        try:
+            self.client.table("eve_messages").delete().eq("id", message_id).execute()
+            return True
+        except Exception as e:
+            print(f"Database Error:{e}")
+            return False
+
+
 
 if __name__ == "__main__":
     db = DBManager()
