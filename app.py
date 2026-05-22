@@ -99,52 +99,54 @@ with col2:
         if "purged_ids" not in st.session_state:
             st.session_state.purged_ids = set()
 
+        if "decrypted_cache" not in st.session_state:
+            st.session_state.decrypted_cache = {}
+
         msgs = st.session_state.get("inbox_msgs", [])
 
         if not msgs:
             st.info("No messages found.")
         else:
              for msg in msgs:
-                already_purged = msg['id'] in st.session_state.purged_ids
-                if already_purged:
-                    decrypted_text = "☁️ Deleted from Cloud"
-                else:
-                    try:
-                        decrypted_text = "Deleted from Cloud" if already_purged else st.session_state.engine.receive_message(
-                            msg['ciphertext'], msg['encrypted_key_json'], st.session_state.my_priv
-                        )
-                    except Exception as e:
-                        decrypted_text = f"Decryption Failed: {e}"
+                 if 'decrypted_content' not in msg:
+                     try:
+                         decrypted_text = st.session_state.engine.receive_message(
+                             msg['ciphertext'],
+                             msg['encrypted_key_json'],
+                             st.session_state.my_priv
+                         )
+                         msg['decrypted_content'] = decrypted_text
+                     except Exception as e:
+                         msg['decrypted_content'] = f"Decryption Error:{e}"
 
-                with st.expander(f"From {msg['sender']} (at {msg['created_at'][:19]})"):
-                    st.write(f"**Plaintext** {decrypted_text}")
+                 already_purged = msg['id'] in st.session_state.purged_ids
 
-                    col_purge, col_dismiss = st.columns(2)
+                 with st.expander(f"From {msg['sender']} (at {msg['created_at'][:19]})"):
+                     display_text = f"☁️[Cloud Deleted] {msg['decrypted_content']}" if already_purged else msg[
+                         'decrypted_content']
+                     st.write(f"**Plaintext** {display_text}")
 
-                    with col_purge:
-                        if st.button("☁️ Purge From Cloud",
+                     col_purge, col_dismiss = st.columns(2)
+
+                     with col_purge:
+                         if st.button("☁️ Purge From Cloud",
                                         key=f"del_{msg['id']}",
                                         disabled=already_purged):
-                            success = st.session_state.db.delete_message(msg['id'])
-                            if success:
+                             success = st.session_state.db.delete_message(msg['id'])
+                             if success:
                                 st.session_state.purged_ids.add(msg['id'])
-                                st.session_state.inbox_msgs = [
-                                m for m in st.session_state.inbox_msgs
-                                    if m['id'] != msg['id']
-                                ]
-
                                 st.rerun()
-                            else:
-                                st.error("Purge request failed.")
+                             else:
+                                 st.error("Purge request failed.")
 
-                        with col_dismiss:
-                            if st.button("👁️ Dismiss", key=f"dismiss_{msg['id']}"):
-                                st.session_state.db.delete_message(msg['id'])
-                                st.session_state.inbox_msgs = [
-                                    m for m in st.session_state.inbox_msgs
-                                    if m['id'] != msg['id']
-                                ]
-                                st.rerun()
+                     with col_dismiss:
+                         if st.button("👁️ Dismiss", key=f"dismiss_{msg['id']}"):
+                             st.session_state.db.delete_message(msg['id'])
+                             st.session_state.inbox_msgs = [
+                                 m for m in st.session_state.inbox_msgs
+                                 if m['id'] != msg['id']
+                             ]
+                             st.rerun()
 
     else:
         st.warning("Please login in the sidebar first!")
