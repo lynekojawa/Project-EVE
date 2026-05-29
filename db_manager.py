@@ -79,6 +79,18 @@ class DBManager:
             print(f"Database Error:{e}")
             return False
 
+    def fetch_targeted_messages(self, username: str) -> list:
+        try:
+            response = self.client.table("eve_messages")\
+                .select("*")\
+                .or_(f"sender.eq.{username},recipient.eq.{username}")\
+                .order("created_at", desc = True)\
+                .execute()
+            return response.data if response.data else []
+        except Exception as e:
+            print(f"Error fetching targeted log: {e}")
+            return []
+
 
 
 if __name__ == "__main__":

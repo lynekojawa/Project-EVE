@@ -1,6 +1,11 @@
+#Today(5/29) Phase 4 UI updated and Jump into EVE anlaysis :D
+
 import streamlit as st
+import pandas as pd
+import altair as alt
 from cipher_engine import CryptoEngine
 from db_manager import DBManager
+
 
 st.set_page_config(page_title = "Project EVE", layout = "wide")
 st.title("Project EVE")
@@ -150,3 +155,127 @@ with col2:
 
     else:
         st.warning("Please login in the sidebar first!")
+#divider
+st.markdown("""
+    <style>
+        .eve-container {
+            background-color: #0e1117;
+            border: 2px solid #ff4b4b;
+            padding: 25px;
+            border-radius: 10px;
+            color: #f0f2f6;
+            margin-top: 20px;
+        }
+        .eve-header {
+            color: #ff4b4b !important;
+            font-family: 'Courier New', monospace;
+        }
+        .eve-mono {
+            font-family: 'Courier New', monospace;
+            color: #a3b8cc;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("🕵️‍♂️ Cryptanalysis Control")
+hacker_mode = st.sidebar.toggle("⚡ Initialize Eve Interception")
+
+
+if hacker_mode:
+    st.markdown('<div class="eve-container">', unsafe_allow_html=True)
+    st.markdown('<h2 class="eve-header">🕵️‍♂️ Eve\'s Interception & Cryptanalysis Console</h2>', unsafe_allow_html=True)
+    st.markdown('<p class="eve-mono">Real-time network tap directly targeting the Supabase cloud datastore.</p>',
+                unsafe_allow_html=True)
+    target_username = st.text_input("Target Username", placeholder="e.g. Alice")
+    if "intercepted_msgs" not in st.session_state:
+        st.session_state.intercepted_msgs = []
+
+    if st.button("📡 Tap Cloud Traffic Data Stream", type="primary"):
+        if not target_username.strip():
+            st.error("Please specify a target username to isolate the tap")
+        else:
+            captured = st.session_state.db.fetch_targeted_messages(target_username.strip())
+            st.session_state.intercepted_msgs = captured
+
+            if not captured:
+                st.warning(f"Target username {target_username} is not registered.")
+            else:
+                st.success(f"Interception Established {len(captured)} messages isolated for data stream.")
+    if st.session_state.intercepted_msgs:
+        st.markdown(f"### Raw Intercepted Ciphertext Messages")
+        st.subheader("Select Cipher Cryptanalysis Vector")
+
+        attack_mode = st.radio(
+            "Choose Attack Profile:",
+            ["1. Brute Force Matrix", "2. Frequency Distribution", "3. Known-Plaintext Attack"],
+            horizontal = True
+        )
+
+        ciphertexts = [msg['ciphertext'] for msg in st.session_state.intercepted_msgs]
+
+        if attack_mode == "1. Brute Force Matrix":
+            st.markdown("#### 25-key Exhaustive Search")
+            st.caption("Displaying every single mathematical shift permutation for the first intercepted packet.")
+
+            if ciphertexts:
+                message_options = {
+                    f"{msg['sender']} -> {msg['recipient']} ({msg['created_at']})" : msg['ciphertext']
+                    for msg in st.session_state.intercepted_msgs
+                }
+
+                selected_label = st.selectbox(
+                    "Intercepted Packet Selector",
+                    options = list(message_options.keys())
+                )
+                target_cipher = message_options[selected_label]
+                brute_force_results =[]
+
+                for shift in range(1,26):
+                    candidate_text = st.session_state.engine.apply_caesar(target_cipher, shift, decrypt=True)
+                    brute_force_results.append({"Shift Key": shift, "Decrypted Candidate Text": candidate_text})
+
+                st.dataframe(brute_force_results, use_container_width = True)
+        elif attack_mode == "2. Frequency Distribution":
+            st.markdown("#### Linguistic Signature Mapping")
+            st.caption("Analyzing character frequency distributions across all messages.")
+
+            message_options = {f"{msg['sender']} ({msg['created_at'][:20]})": msg['ciphertext'] for msg in
+                               st.session_state.intercepted_msgs}
+            selected_label = st.selectbox("Analyze Packet:", options=list(message_options.keys()))
+            target_cipher = message_options[selected_label]
+
+            combined_text = "".join([c for c in target_cipher.upper() if c.isalpha()])
+
+            if not combined_text:
+                st.warning("Insufficient alphabetic data intercepted to map a frequency footprint")
+            else:
+                import collections
+                import string
+
+                counts = collections.Counter(combined_text)
+                total_char = len(combined_text)
+
+                freq_data = {letter: (counts[letter]/total_char) * 100 for letter in string.ascii_uppercase}
+                df = pd.DataFrame(list(freq_data.items()), columns=['Letter', 'Frequency'])
+
+                chart = alt.Chart(df).mark_bar(color='#ff4b4b').encode(
+                    x=alt.X('Letter:N', sort=list(string.ascii_uppercase), title='Intercepted Character Vector'),
+                    y=alt.Y('Frequency:Q', title='Frequency (%)', scale=alt.Scale(domain=[0, 100])),
+                    tooltip=['Letter', 'Frequency']
+                ).properties(
+                    height=300
+                ).configure_axis(
+                    grid=False
+                )
+
+                st.markdown("### Target Ciphertext")
+                st.code(target_cipher, language = "text")
+                st.caption(f"{len(target_cipher)} characters")
+
+                st.altair_chart(chart, use_container_width=True)
+                st.info("💡 Tip: Look for the highest peaks. In normal English text, those peaks align to E, T, and A. Their offset reveals the key.")
+
+
+    st.markdown('</div>', unsafe_allow_html=True)
