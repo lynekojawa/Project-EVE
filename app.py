@@ -1,8 +1,10 @@
-#Today(5/29) Phase 4 UI updated and Jump into EVE anlaysis :D
+#Today(6/1) We are going to finish phase 5!
 
 import streamlit as st
 import pandas as pd
 import altair as alt
+import string
+import collections
 from cipher_engine import CryptoEngine
 from db_manager import DBManager
 
@@ -209,7 +211,7 @@ if hacker_mode:
 
         attack_mode = st.radio(
             "Choose Attack Profile:",
-            ["1. Brute Force Matrix", "2. Frequency Distribution", "3. Known-Plaintext Attack"],
+            ["1. Brute Force Matrix", "2. Frequency Distribution", "3. Known-Plaintext Attack", "4. Full Terminal View"],
             horizontal = True
         )
 
@@ -251,8 +253,6 @@ if hacker_mode:
             if not combined_text:
                 st.warning("Insufficient alphabetic data intercepted to map a frequency footprint")
             else:
-                import collections
-                import string
 
                 counts = collections.Counter(combined_text)
                 total_char = len(combined_text)
@@ -276,6 +276,132 @@ if hacker_mode:
 
                 st.altair_chart(chart, use_container_width=True)
                 st.info("💡 Tip: Look for the highest peaks. In normal English text, those peaks align to E, T, and A. Their offset reveals the key.")
+        elif attack_mode == "3. Known-Plaintext Attack":
+            st.markdown("#### Chosen-Phrase Distance Correlation")
+            st.caption("Scan ciphertext files for consistent modular shift vectors using a guessed phases")
 
+            if ciphertexts:
+                message_options = {
+                    f"{msg['sender']} -> {msg['recipient']} ({msg['created_at'][:20]})" : msg['ciphertext']
+                    for msg in st.session_state.intercepted_msgs
+                }
+                selected_label = st.selectbox("Select Target Crytogram:", options = list(message_options.keys()), key="kpa_select")
+                target_cipher = message_options[selected_label]
+
+                st.code(target_cipher, language = "text")
+
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    cipher_segment = st.text_input("1. Target Cipher Segment:", placeholder="e.g., Yvccf").strip()
+                with col2:
+                    guess_segment = st.text_input("2. Your Plaintext Guess:", placeholder="e.g., Hello").strip()
+
+                if cipher_segment and guess_segment:
+                    c_clean = "".join([c.upper() for c in cipher_segment if c.isalpha()])
+                    p_clean = "".join([g.upper() for g in guess_segment if g.isalpha()])
+
+                    if len(c_clean) != len(p_clean):
+                        st.error(
+                            "Invalid Constraint: Cipher segment and Plaintext guess must have identical character lengths.")
+                    elif len(c_clean) < 2:
+                        st.warning("Need at least 2 characters for a statistically significant key derivation.")
+                    else:
+
+                        shifts = [(ord(c_clean[i]) - ord(p_clean[i])) % 26 for i in range(len(c_clean))]
+
+                        if len(set(shifts)) == 1:
+                            discovered_key = shifts[0]
+                            st.balloons()
+                            st.success(
+                                f"💥 **Alignment Confirmed!** Constant shift vector identified: `{discovered_key}`")
+
+                            decrypted_payload = st.session_state.engine.apply_caesar(target_cipher, discovered_key,
+                                                                                     decrypt=True)
+                            st.markdown("### Cracked Plaintext Data")
+                            st.info(f"**Recovered Stream:** {decrypted_payload}")
+                        else:
+                            st.error(
+                                f"Mismatch Detected! The segment and guess imply inconsistent shifts: {set(shifts)}")
+            else:
+                st.warning("No intercepted messages available to scan")
+
+        elif attack_mode == "4. Full Terminal View":
+            st.error("DEBUG: Entering Mode 4 Logic!")
+            st.markdown("#### Unified Intelligence Dashboard")
+            st.caption("Simultaneous processing of Exhaustive Brute-Force and Linguistic")
+
+            if not ciphertexts:
+                st.warning("No intercepted messages available.")
+            else:
+                message_options = {
+                    f"{msg['sender']} -> {msg['recipient']} ({msg['created_at'][:19]})": msg['ciphertext']
+                    for msg in st.session_state.intercepted_msgs
+                }
+
+                st.write(f"DEBUG: Found {len(message_options)} messages available.")
+
+                option_list = list(message_options.keys())
+
+                if not option_list:
+                    st.error("No options generated for selectbox.")
+                else:
+                    selected_label = st.selectbox(
+                        "Dashboard Target Stream:",
+                        options=option_list,
+                        key="dash_select_v4"
+                    )
+
+                    target_cipher = message_options[selected_label]
+
+                    dash_col1, dash_col2 = st.columns(2)
+
+                    with dash_col1:
+                        st.markdown("#### Key Exhaustive Matrix")
+                        brute_results = []
+
+                        for shift in range(1, 26):
+                            candidate_text = st.session_state.engine.apply_caesar(target_cipher, shift, decrypt=True)
+                            brute_results.append({"Shift": shift, "Decrypted Output": candidate_text})
+                        st.dataframe(brute_results, use_container_width=True, height=350)
+
+                    with dash_col2:
+                        st.markdown("#### 📊 Character Variance Spectrum")
+                        combined_text = "".join([c for c in target_cipher.upper() if c.isalpha()])
+
+                        if combined_text:
+                            counts = collections.Counter(combined_text)
+                            total_char = len(combined_text)
+                            freq_data = {letter: (counts[letter] / total_char) * 100 for letter in
+                                         string.ascii_uppercase}
+                            df = pd.DataFrame(list(freq_data.items()), columns=['Letter', 'Frequency'])
+
+                            chart = alt.Chart(df).mark_bar(color='#ff4b4b').encode(
+                                x=alt.X('Letter:N', sort=list(string.ascii_uppercase),
+                                        title='Intercepted Character Vector'),
+                                y=alt.Y('Frequency:Q', title='Frequency(%)', scale=alt.Scale(domain=[0, 100])),
+                                tooltip=['Letter', 'Frequency']
+                            ).properties(height=350
+                                         ).configure_axis(
+                                grid=False
+                            )
+
+                            st.altair_chart(chart, use_container_width=True)
+                        else:
+                            st.warning("No alphabetic data available for frequency plot")
+                    st.markdown("#### 🎯 Auto-Correlation Result")
+                    if combined_text:
+                        most_common_letter = counts.most_common(1)[0][0]
+                        if len(combined_text) < 10:
+                            st.warning("⚠️ Warning: Data sample too small. Statistical bias high.")
+
+                        likely_shift = (ord(most_common_letter) - ord('E')) % 26
+                        likely_plaintext = st.session_state.engine.apply_caesar(
+                            target_cipher, likely_shift, decrypt=True
+                        )
+                        st.info(f"Most frequent intercepted character: **{most_common_letter}**")
+                        st.success(
+                            f"Probable shift key: **{likely_shift}** → Most likely plaintext: **{likely_plaintext}**")
+                        st.caption("Based on English frequency assumption: E is the most common letter.")
 
     st.markdown('</div>', unsafe_allow_html=True)
