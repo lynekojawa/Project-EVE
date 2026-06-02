@@ -88,26 +88,7 @@ class DBManager:
                 .execute()
             return response.data if response.data else []
         except Exception as e:
-            print(f"Error fetching targeted log: {e}")
+            logger.error(f"Error fetching targeted log: {e}")
             return []
 
 
-
-if __name__ == "__main__":
-    db = DBManager()
-
-    # Test registration
-    success = db.register_profile("Alice", 12345)
-    print(f"Registration: {success}")
-
-    # Test message upload
-    success = db.upload_message("Alice", "Bob", "Olssv", '{"c1": 1, "c2": 2}')
-    print(f"Message upload: {success}")
-
-    # Test fetch
-    messages = db.fetch_messages("Bob")
-    print(f"Messages: {messages}")
-
-    # Test profile fetch
-    profile = db.fetch_profile("Alice")
-    print(f"Profile: {profile}")
