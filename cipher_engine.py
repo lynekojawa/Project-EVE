@@ -95,13 +95,3 @@ class CryptoEngine:
         return plaintext
 
 
-#Test
-if __name__ == "__main__":
-    engine = CryptoEngine()
-    db = DBManager()
-
-    pub_key, priv_key = engine.generate_keypair()
-
-    print("---DB Registration---")
-    db.register_profile("Alice", pub_key)
-    print("Success, check your table in dashboard")
