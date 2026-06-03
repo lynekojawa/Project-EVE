@@ -1,5 +1,6 @@
 # Project EVE
-
+[![Live Demo](https://img.shields.io/badge/Live-Demo-brightgreen?style=for-the-badge&logo=appveyor)]
+(https://project-eve-hypadrnwddav6olyyq6ay7.streamlit.app/)
 ## 🛡️ Why I Built This
 I studied Cryptography in my undergraduate program and wanted to build 
 something that applies ElGamal to a real product — not just on paper. 
