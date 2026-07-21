@@ -2,7 +2,6 @@
 
 import secrets
 import json
-from db_manager import DBManager
 
 #RFC3526 - 1536 bit safe prime
 P_Hex ="""
