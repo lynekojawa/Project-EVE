@@ -10,7 +10,7 @@ class CryptoError(Exception):
     pass
 
 class InvalidPaddingError(CryptoError):
-    """Raised when PKC#7 padding validation fails"""
+    """Raised when PKCS#7 padding validation fails"""
     pass
 class NonInvertibleMatrixError(CryptoError):
     """Raised when a Hill Cipher matrix key is non-invertible in Z_256."""
@@ -32,10 +32,7 @@ class BaseCipher(abc.ABC):
 
     @staticmethod
     def unpad(data: bytes, block_size: int) -> bytes:
-        """
-        Validates and strips PKCS#7 block padding in constant-time checks where applicable.
-        Raises InvalidPaddingError if padding structure is malformed
-        """
+        """Validates and strips PKCS#7 padding."""
         if not data:
             raise InvalidPaddingError("Data payload is empty.")
         if len(data) % block_size != 0:
@@ -128,7 +125,118 @@ class VigenereEngine(BaseCipher):
         k_len = len(key_bytes)
         return bytes([(c - key_bytes[i % k_len]) % 256 for i, c in enumerate(plaintext)])
 
-@Hillcipher
+class HillEngine(BaseCipher):
+    """
+    Engine 0x04: High-Density n x n Matrix Hill Cipher over Z_256 ring.
+    Requires PKCS#7 block padding
+    """
+    @staticmethod
+    def matrix_def(matrix: List[List[int]]) -> int:
+        """Computes exact matrix determinant over Z via recursive cofactor expansion. """
+        n = len(matrix)
+        if n == 1:
+            return matrix[0][0]
+        if n == 2:
+            return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]
+
+        det = 0
+        for j in range(n):
+            submatrix = [row[:j] + row[j+1:] for row in matrix[1:]]
+            cofactor = ((-1) ** j) * matrix[0][j] * HillEngine.matrix_det(submatrix)
+            det += cofactor
+        return det
+
+    @staticmethod
+    def invert_key_matrix(matrix: List[List[int]]) -> List[List[int]]:
+        """
+        Inverts an n x n key matrix over ring Z_256 using the Adjugate Matrix method.
+        Algebraic Guard: Invertible in Z_256 iff gcd(det(K), 256) == 1 (det(K) is odd).
+        """
+
+        n = len(matrix)
+        for row in matrix:
+            if len(row) != n:
+                raise ValueError("Key matrix must be square (n x n).")
+
+        det = HillEngine.matrix_det(matrix)
+        det_mod = det % 256
+
+        if det_mod % 2 == 0:
+            raise NonInvertibleMatrixError(
+                f"Matrix non-invertible in Z_256: det(K) = {det} (mod 256 = {det_mod}) is even"
+            )
+
+        det_inv = AffineEngine.mod_inverse_256(det_mod)
+
+        if n == 1:
+            return [[det_inv]]
+        adjugate = [[0] * n for _ in range(n)]
+        for i in range(n):
+            for j in range(n):
+                minor = HillEngine.matrix_minor(matrix, i, j)
+                cofactor = ((-1) ** (i + j)) * HillEngine.matrix_det(minor)
+                adjugate[j][i] = cofactor % 256
+
+        inv_matrix = [[(det_inv * adjugate[i][j]) % 256 for j in range(n)] for i in range(n)]
+        return inv_matrix
+
+    def encrypt(self, plaintext: bytes, key: List[List[int]]) -> bytes:
+        n = len(key)
+        _ = self.invert_key_matrix(key)
+
+        padded_payload = self.pad(plaintext, block_size = n)
+        ciphertext_blocks = []
+
+        for offset in range(0, len(padded_payload), n):
+            block = padded_payload[offset:offset + n]
+            for i in range(n):
+                c_byte = sum(key[i][j] * block[j] for j in range(n)) % 256
+                ciphertext_blocks.append(c_byte)
+
+        return bytes(ciphertext_blocks)
+
+    def decrypt(self, ciphertext: bytes, key: List[List[int]]) -> bytes:
+        n = len(key)
+        if len(ciphertext) % n != 0:
+            raise InvalidPaddingError("Ciphertext payload length is not aligned to Hill block size")
+
+        inv_key = self.invert_key_matrix(key)
+        plaintext_blocks = []
+
+        for offset in range(0, len(ciphertext), n):
+            block = ciphertext[offset:offset + n]
+            for i in range(n):
+                p_byte = sum(inv_key[i][j] * block[j] for j in range(n)) % 256
+                plaintext_blocks.append(p_byte)
+
+        raw_bytes = bytes(plaintext_blocks)
+        return self.unpad(raw_bytes, block_size = n)
+
+class CipherFactory:
+    """Factory interface for instantiating Z_256 modular cipher engines."""
+
+    _ENGINES = {
+        0x01: CaesarEngine,
+        0x02: AffineEngine,
+        0x03: VigenereEngine,
+        0x04: HillEngine
+    }
+
+    @classmethod
+    def get_engine(cls, engine_id: int) -> BaseCipher:
+        """Returns instantiated cipher engine for give 1-byte ID."""
+        if engine_id not in cls._ENGINES:
+            raise ValueError(f"Unsupported Engine Identifier: 0x{engine_id: 02X}")
+        return cls._ENGINES[engine_id]()
+
+
+
+
+
+
+
+
+
 
 
 
