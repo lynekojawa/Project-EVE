@@ -1,6 +1,10 @@
 """
 Project EVE v2.1 - phase 1: core cipher engines
 Implements Base Cipher, PKCS#7 Padding, Z_256 Modular Cipher Engines and Cipher Factory.
+Updates:
+1. Separated Block/Stream logic.
+2. Eliminated redundant matrix inversions.
+3. Injected modular reductions into determinant recursion.
 """
 import abc
 from typing import List, Tuple, Union
@@ -12,23 +16,19 @@ class CryptoError(Exception):
 class InvalidPaddingError(CryptoError):
     """Raised when PKCS#7 padding validation fails"""
     pass
+
 class NonInvertibleMatrixError(CryptoError):
     """Raised when a Hill Cipher matrix key is non-invertible in Z_256."""
     pass
 
-class BaseCipher(abc.ABC):
-    """Abstract Base Class for all Z_256 cipher engines with PKCS#7 capabilities."""
+class PKCS7:
+    """Utility class for PKCS#7 padding. Separated from BaseCipher to prevent inheritance pollution."""
     @staticmethod
     def pad(data: bytes, block_size: int) -> bytes:
-        """Applies PKCS#7 block padding to arbitrary byte data.
-        For data length L and block size n, padding byte value p = n - (L mod n).
-        Appends p bytes of value p.
-        """
-
-        if block_size <1 or block_size >255:
+        if not (1 <= block_size <= 255):
             raise ValueError("Block size must be in range [1, 255].")
         padding_len = block_size - (len(data) % block_size)
-        return data +bytes([padding_len] * padding_len)
+        return data + bytes([padding_len] * padding_len)
 
     @staticmethod
     def unpad(data: bytes, block_size: int) -> bytes:
@@ -39,21 +39,24 @@ class BaseCipher(abc.ABC):
             raise InvalidPaddingError("Payload length is not a multiple of block size.")
 
         padding_len = data[-1]
-        if padding_len < 1 or padding_len > block_size or padding_len > len(data):
-            raise InvalidPaddingError("Invalid PKC#7 padding length indicator.")
-        for i in range(1, padding_len +1):
-            if data[-i] != padding_len:
-                raise InvalidPaddingError("Corrupted PKCS#7 padding bytes detected.")
+        if not (1<= padding_len <= block_size):
+            raise InvalidPaddingError("Invalid PKCS#7 padding length")
+
+        if any(b != padding_len for b in data[-padding_len:]):
+            raise InvalidPaddingError("Corrupted PKCS#7 padding detected.")
+
         return data[: -padding_len]
+
+
+class BaseCipher(abc.ABC):
+    """Abstract Base Class for all Z_256 cipher engines"""
 
     @abc.abstractmethod
     def encrypt(self, plaintext: bytes, key: Union[int, Tuple[int, int], str, bytes, List[List[int]]]) -> bytes:
-        """Encrypts raw bytes under the designated key structure."""
         pass
 
     @abc.abstractmethod
     def decrypt(self, ciphertext: bytes, key: Union[int, Tuple[int, int], str, bytes, List[List[int]]]) -> bytes:
-        """Decrypts ciphertext bytes under the designated key structure."""
         pass
 
 class CaesarEngine(BaseCipher):
@@ -99,14 +102,13 @@ class AffineEngine(BaseCipher):
         return t
 
     def encrypt(self, plaintext: bytes, key: Tuple[int, int]) -> bytes:
-        a, b = key
-        _ = self.mod_inverse_256(a)
-        return bytes([a * p + b] %256 for p in plaintext)
+        a, b = key[0] % 256, key[1] % 256
+        return bytes([(a * p + b) % 256 for p in plaintext])
 
     def decrypt(self, ciphertext: bytes, key: Tuple[int, int]) -> bytes:
-        a, b = key
+        a, b = key[0] % 256, key[1] % 256
         a_inv = self.mod_inverse_256(a)
-        return bytes([(a_inv * (c-b)) %256 for c in ciphertext])
+        return bytes([(a_inv * (c - b)) % 256 for c in ciphertext])
 
 class VigenereEngine(BaseCipher):
     """Engine 0x03: Polyalphabetic Stream Cipher over Z_256."""
@@ -123,7 +125,7 @@ class VigenereEngine(BaseCipher):
         if not key_bytes:
             raise ValueError("Vigenere key vector cannot be empty")
         k_len = len(key_bytes)
-        return bytes([(c - key_bytes[i % k_len]) % 256 for i, c in enumerate(plaintext)])
+        return bytes([(c - key_bytes[i % k_len]) % 256 for i, c in enumerate(ciphertext)])
 
 class HillEngine(BaseCipher):
     """
@@ -135,15 +137,15 @@ class HillEngine(BaseCipher):
         """Computes exact matrix determinant over Z via recursive cofactor expansion. """
         n = len(matrix)
         if n == 1:
-            return matrix[0][0]
+            return matrix[0][0] % 256
         if n == 2:
-            return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]
+            return (matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]) % 256
 
         det = 0
         for j in range(n):
-            submatrix = [row[:j] + row[j+1:] for row in matrix[1:]]
-            cofactor = ((-1) ** j) * matrix[0][j] * HillEngine.matrix_det(submatrix)
-            det += cofactor
+            minor = [row[:j] + row[j+1:] for row in matrix[1:]]
+            sign = 1 if j % 2 == 0 else -1
+            det = (det + sign * matrix[0][j] * HillEngine.matrix_det(minor)) % 256
         return det
 
     @staticmethod
@@ -182,35 +184,26 @@ class HillEngine(BaseCipher):
 
     def encrypt(self, plaintext: bytes, key: List[List[int]]) -> bytes:
         n = len(key)
-        _ = self.invert_key_matrix(key)
+        if self.matrix_det(key) % 2 == 0:
+            raise NonInvertibleMatrixError("Key matrix is not invertible.")
 
-        padded_payload = self.pad(plaintext, block_size = n)
-        ciphertext_blocks = []
-
-        for offset in range(0, len(padded_payload), n):
-            block = padded_payload[offset:offset + n]
+        p = PKCS7.pad(plaintext, n)
+        res = []
+        for o in range(0, len(p), n):
+            block = p[o:o + n]
             for i in range(n):
-                c_byte = sum(key[i][j] * block[j] for j in range(n)) % 256
-                ciphertext_blocks.append(c_byte)
-
-        return bytes(ciphertext_blocks)
+                res.append(sum(key[i][j] * block[j] for j in range(n)) % 256)
+        return bytes(res)
 
     def decrypt(self, ciphertext: bytes, key: List[List[int]]) -> bytes:
         n = len(key)
-        if len(ciphertext) % n != 0:
-            raise InvalidPaddingError("Ciphertext payload length is not aligned to Hill block size")
-
-        inv_key = self.invert_key_matrix(key)
-        plaintext_blocks = []
-
-        for offset in range(0, len(ciphertext), n):
-            block = ciphertext[offset:offset + n]
+        inv = self.invert_key_matrix(key) # Full inversion only needed here
+        res = []
+        for o in range(0, len(ciphertext), n):
+            block = ciphertext[o:o+n]
             for i in range(n):
-                p_byte = sum(inv_key[i][j] * block[j] for j in range(n)) % 256
-                plaintext_blocks.append(p_byte)
-
-        raw_bytes = bytes(plaintext_blocks)
-        return self.unpad(raw_bytes, block_size = n)
+                res.append(sum(inv[i][j] * block[j] for j in range(n)) % 256)
+        return PKCS7.unpad(bytes(res), n)
 
 class CipherFactory:
     """Factory interface for instantiating Z_256 modular cipher engines."""
