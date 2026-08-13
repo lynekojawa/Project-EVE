@@ -25,7 +25,7 @@ class PKCS7:
     """Utility class for PKCS#7 padding. Separated from BaseCipher to prevent inheritance pollution."""
     @staticmethod
     def pad(data: bytes, block_size: int) -> bytes:
-        if not (1 <= block_size <= 255):
+        if block_size < 1 or block_size > 255:
             raise ValueError("Block size must be in range [1, 255].")
         padding_len = block_size - (len(data) % block_size)
         return data + bytes([padding_len] * padding_len)
@@ -33,19 +33,24 @@ class PKCS7:
     @staticmethod
     def unpad(data: bytes, block_size: int) -> bytes:
         """Validates and strips PKCS#7 padding."""
+        if block_size < 1 or block_size > 255:
+            raise ValueError("Block size must be in range [1, 255].")
+
         if not data:
             raise InvalidPaddingError("Data payload is empty.")
+
         if len(data) % block_size != 0:
             raise InvalidPaddingError("Payload length is not a multiple of block size.")
 
         padding_len = data[-1]
-        if not (1<= padding_len <= block_size):
-            raise InvalidPaddingError("Invalid PKCS#7 padding length")
+        if padding_len < 1 or padding_len > block_size or padding_len > len(data):
+            raise InvalidPaddingError("Invalid PKCS#7 padding length indicator.")
 
-        if any(b != padding_len for b in data[-padding_len:]):
-            raise InvalidPaddingError("Corrupted PKCS#7 padding detected.")
+        for i in range(1, padding_len + 1):
+            if data[-i] != padding_len:
+                raise InvalidPaddingError("Corrupted PKCS#7 padding bytes detected.")
 
-        return data[: -padding_len]
+        return data[:-padding_len]
 
 
 class BaseCipher(abc.ABC):
@@ -103,6 +108,7 @@ class AffineEngine(BaseCipher):
 
     def encrypt(self, plaintext: bytes, key: Tuple[int, int]) -> bytes:
         a, b = key[0] % 256, key[1] % 256
+        self.mod_inverse_256(a)
         return bytes([(a * p + b) % 256 for p in plaintext])
 
     def decrypt(self, ciphertext: bytes, key: Tuple[int, int]) -> bytes:
@@ -120,7 +126,7 @@ class VigenereEngine(BaseCipher):
         k_len = len(key_bytes)
         return bytes([(p + key_bytes[i % k_len]) % 256 for i, p in enumerate(plaintext)])
 
-    def decrypt(self, plaintext: bytes, key: Union[str, bytes]) -> bytes:
+    def decrypt(self, ciphertext: bytes, key: Union[str, bytes]) -> bytes:
         key_bytes = key.encode('utf-8') if isinstance(key, str) else key
         if not key_bytes:
             raise ValueError("Vigenere key vector cannot be empty")
@@ -133,20 +139,23 @@ class HillEngine(BaseCipher):
     Requires PKCS#7 block padding
     """
     @staticmethod
-    def matrix_def(matrix: List[List[int]]) -> int:
-        """Computes exact matrix determinant over Z via recursive cofactor expansion. """
+    def matrix_det(matrix: List[List[int]]) -> int:
         n = len(matrix)
         if n == 1:
-            return matrix[0][0] % 256
+            return matrix[0][0]
         if n == 2:
-            return (matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]) % 256
+            return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]
 
         det = 0
         for j in range(n):
-            minor = [row[:j] + row[j+1:] for row in matrix[1:]]
+            submatrix = [row[:j] + row[j + 1:] for row in matrix[1:]]
             sign = 1 if j % 2 == 0 else -1
-            det = (det + sign * matrix[0][j] * HillEngine.matrix_det(minor)) % 256
+            det += sign * matrix[0][j] * HillEngine.matrix_det(submatrix)
         return det
+
+    @staticmethod
+    def matrix_minor(matrix: List[List[int]], i: int, j: int) -> List[List[int]]:
+        return [row[:j] + row[j + 1:] for row in (matrix[:i] + matrix[i + 1:])]
 
     @staticmethod
     def invert_key_matrix(matrix: List[List[int]]) -> List[List[int]]:
@@ -157,46 +166,52 @@ class HillEngine(BaseCipher):
 
         n = len(matrix)
         for row in matrix:
-            if len(row) != n:
-                raise ValueError("Key matrix must be square (n x n).")
+            if len(row) != n: raise ValueError("Key matrix must be square (n x n).")
 
         det = HillEngine.matrix_det(matrix)
+
         det_mod = det % 256
 
         if det_mod % 2 == 0:
-            raise NonInvertibleMatrixError(
-                f"Matrix non-invertible in Z_256: det(K) = {det} (mod 256 = {det_mod}) is even"
-            )
+            raise NonInvertibleMatrixError(f"det(K) = {det} (mod 256 = {det_mod}) is even.")
 
         det_inv = AffineEngine.mod_inverse_256(det_mod)
 
-        if n == 1:
-            return [[det_inv]]
+        if n == 1: return [[det_inv]]
         adjugate = [[0] * n for _ in range(n)]
+
         for i in range(n):
             for j in range(n):
                 minor = HillEngine.matrix_minor(matrix, i, j)
                 cofactor = ((-1) ** (i + j)) * HillEngine.matrix_det(minor)
                 adjugate[j][i] = cofactor % 256
-
         inv_matrix = [[(det_inv * adjugate[i][j]) % 256 for j in range(n)] for i in range(n)]
         return inv_matrix
 
+
     def encrypt(self, plaintext: bytes, key: List[List[int]]) -> bytes:
         n = len(key)
-        if self.matrix_det(key) % 2 == 0:
+        if HillEngine.matrix_det(key) % 2 == 0:
             raise NonInvertibleMatrixError("Key matrix is not invertible.")
 
-        p = PKCS7.pad(plaintext, n)
+        p = PKCS7.pad(plaintext, block_size=n)
         res = []
-        for o in range(0, len(p), n):
-            block = p[o:o + n]
+        for offset in range(0, len(p), n):
+            block = p[offset:offset + n]
             for i in range(n):
-                res.append(sum(key[i][j] * block[j] for j in range(n)) % 256)
+                c_byte = sum(key[i][j] * block[j] for j in range(n)) % 256
+                res.append(c_byte)
         return bytes(res)
 
     def decrypt(self, ciphertext: bytes, key: List[List[int]]) -> bytes:
         n = len(key)
+        if n < 1:
+            raise ValueError("Key matrix must not be empty.")
+
+        if len(ciphertext) % n != 0:
+            raise InvalidPaddingError(
+                "Ciphertext payload length is not aligned to Hill block size."
+            )
         inv = self.invert_key_matrix(key) # Full inversion only needed here
         res = []
         for o in range(0, len(ciphertext), n):
