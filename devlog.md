@@ -10,6 +10,7 @@ Continue the project, writing from Hill Cipher. <br>
 This is very challenging, has lots of bounce bump, not only I need to make sure code runs, I also need to think about what's more efficiency or not. <br>
 
 (8/13)<br>
+part1<br>
 Continued, phase 1 confirmed by podos and orion, and mini-dante, run the test,<br>
 🚀 Starting Grand Arsenal Audit for: 'Imperial Protocol v2.1 - Hello PODO!'
 
@@ -24,3 +25,7 @@ Continued, phase 1 confirmed by podos and orion, and mini-dante, run the test,<b
     └─ Ciphertext(hex): 5ee581775b9d86eda0ff865383b23cdaa3b8a2ea3c533f97e5...
 🏆 All engines are operational and algebraically sound!
 and output looks solid. 
+part2<br>
+initiated phase 2 with Orion, waiting for Dante's response. 
+it kinda make sense why for all lecture notes and textbooks says (keyGen, Enc, Dec) and they are all written as Tuple <br>
+gosh, I was working on protocol_engine today and Orion only gave me 2 engines, is this a sign of drift or lazyness. For real<br>
