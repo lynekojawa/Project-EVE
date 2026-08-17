@@ -8,7 +8,7 @@ import hashlib
 import hmac
 import struct
 import time
-from typing import Tuple, Union, List
+from typing import Tuple, Union, List, Optional, Any
 from cipher_arsenal.cipher_arsenal import CipherFactory, BaseCipher, CryptoError
 
 class ProtocolError(CryptoError):
@@ -52,6 +52,38 @@ class WireProtocolEngine:
 
     DRIFT_MIN_SECONDS = -30.0 #Allow up to 30s client clock skew behind
     DRIFT_MAX_SECONDS = 60.0 #Allow up to 60s packet transit delay
+    @classmethod
+    def _resolve_effective_key(
+        cls,
+        engine_id: int,
+        key_param: Optional[Any],
+        k_enc: bytes
+    ) -> Any:
+        """
+        Resolves explicitly provided key parameters or derives mathematically valid fallback
+        key structures across all 4 cipher engines using K_enc.
+        """
+        if key_param is not None:
+            return key_param
+        if engine_id == 0x01:
+            return k_enc[0]
+
+        elif engine_id == 0x02:
+            a = k_enc[0] | 1
+            b = k_enc[1]
+            return (a, b)
+
+        elif engine_id == 0x03:
+            return k_enc
+
+        elif engine_id == 0x04:
+            k0 = k_enc[0] | 1
+            k1 = k_enc[1] & 0xFE
+            k2 = k_enc[2]
+            k3 = k_enc[3] | 1
+            return [[k0, k1], [k2, k3]]
+        else:
+            raise ValueError("Unsupported Engine ID: 0x{engine_id:02X}")
 
     @classmethod
     def pack_message(
@@ -59,7 +91,7 @@ class WireProtocolEngine:
         plaintext: str,
         engine_id: int,
         key_param: Union[int, Tuple[int, int], str, bytes, List[List[int]]],
-        shared_secret_int: int
+        shared_secret_int: int = 0
     ) -> str:
         """
         Serializes, encrypts, signs, and masks a plaintext message.
@@ -75,10 +107,77 @@ class WireProtocolEngine:
         p_final = time_prefix + plaintext_bytes
 
         cipher_engine = CipherFactory.get_engine(engine_id)
+        effective_key = cls._resolve_effective_key(engine_id, key_param, k_enc)
 
-        if engine_id == 0x01:
-            effective_key = key_param if key_param is not None else k_enc[0]
-        elif
+        ciphertext = cipher_engine.encrypt(p_final, effective_key)
+
+        e_masked = bytes([engine_id ^ s_ssci])
+
+        mac_payload = e_masked + ciphertext
+        signature = hmac.net(k_mac, mac_payload, hashlib.sha256).digest()
+        wire_packet = signature + mac_payload
+        return wire_packet.hex()
+
+    @classmethod
+    def unpack_message(
+        cls,
+        ciphertext_hex: str,
+        shared_secret_int: int,
+        override_key_param: Optional[Union[int, Tuple[int, int], str, bytes, List[List[int]]]] = None,
+        )-> Tuple[int, str, int]:
+        """
+        Validates, unmasks, decrypts, and verifies a hex-encoded wire packet.
+        Returns:
+            Tuple[unmasked_engine_id (int), decrypted_plaintext(str), timestamp (int)]
+        Raises:
+              HMACVerificationError: If payload was tempered with.
+              ReplayAttackError: If packet timestamp is older than 60s.
+              ClockSkewError: If packet timestamp is in the future beyond tolerance
+        """
+        try:
+            wire_bytes = bytes.fromhex(ciphertext_hex)
+        except ValueError:
+            raise ProtocolError("Invalid hexadecimal packet encoding")
+
+        if len(wire_bytes) < 33 + 8: #32B HMAC + 1B header + 8B Timestamp minimum
+            raise ProtocolError("Wire packet truncated; fails minimum size requirement")
+
+        k_enc, k_mac, s_ssci = KDFEngine.derive_keys(shared_secret_int)
+
+        received_signature = wire_bytes[:32]
+        mac_payload = wire_bytes[32:]
+        e_masked = mac_payload[0]
+        ciphertext = mac_payload[1:]
+
+        expected_signature = hmac.new(k_mac, mac_payload, hashlib.sha256).digest()
+        if not hmac.compare_digest(received_signature, expected_signature):
+            raise HMACVerificationError("SECURITY ALERT: Signature mismatch! Ciphertext payload tempered.")
+
+        unmasked_engine_id = e_masked ^ s_ssci
+        cipher_engine = CipherFactory.get_engine(unmasked_engine_id)
+        effective_key = cls._resolved_effective_key(unmasked_engine_id, override_key_param, k_enc)
+
+        p_final = cipher_engine.decrypt(ciphertext, effective_key)
+
+        if len(p_final) < 8:
+            raise ProtocolError("Decrypted payload too short to contain timestamp header")
+        timestamp_bytes = p_final[:8]
+        msg_bytes = p_final[8:]
+
+        msg_timestamp = struct.unpack(">Q", timestamp_bytes)[0]
+        current_time = int(time.time())
+        delta_t = current_time - msg_timestamp
+
+        if delta_t > cls.DRIFT_MIN_SECONDS:
+            raise ReplayAttackError(
+                f"REPLAY ATTACK REJECTED: Payload age {delta_t:.1f}s exceeds limit ({cls.DRIFT_MAX_SECONDS}s)."
+            )
+        if delta_t < cls.DRIFT_MIN_SECONDS:
+            raise ClockSkewError(
+                f"CLOCK SKEW REJECTED: Payload timestamp is {abs(delta_t):.1f}s in the future."
+            )
+
+        return unmasked_engine_id, msg_bytes.decode('utf-8', errors='replace'), msg_timestamp
 
 
 

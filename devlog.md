@@ -36,4 +36,5 @@ First, Artisan vs Efficiency, currently my Hill code does modular at the end, bu
 between each recursive step is better. <br> 
 Second, no mod_inverse in encryption, for efficiency use when decrypt but no encrypt <br>
 Before moving back to phase 2 updating script test: one, add Edge cases, Two, add affine invalid key text<br>
-Passed all test with edge cases. 
+Passed all test with edge cases. <br>
+Phase 2 auditing the Orion's script timestamp 6:00pm-> finished transcribe working on logic. 
