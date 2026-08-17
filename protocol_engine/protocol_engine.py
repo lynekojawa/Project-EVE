@@ -1,7 +1,9 @@
 """
 Project EVE v2.1 — Phase 2: Protocol & Security Layer Engine
-Implements Key Derivation Functions (KDF), HMAC Integrity Verification,
-Shared-Secret Cipher Identification (SSCI) Masking, and Anti-Replay Temporal Validation.
+Updates:
+1. Deterministic Matrix Derivation (Full Entropy).
+2. Protocol-level PKCS#7 Unification (Anti-Length-Leak).
+3. Strict UTF-8 Decoding.
 """
 
 import hashlib
@@ -9,7 +11,7 @@ import hmac
 import struct
 import time
 from typing import Tuple, Union, List, Optional, Any
-from cipher_arsenal.cipher_arsenal import CipherFactory, BaseCipher, CryptoError
+from cipher_arsenal.cipher_arsenal import CipherFactory, CryptoError, NonInvertibleMatrixError
 
 class ProtocolError(CryptoError):
     """Base exception for protocol wire-level processing failures"""
@@ -38,7 +40,7 @@ class KDFEngine:
         """
 
         s_bytes = shared_secret_int.to_bytes(192, byteorder = 'big')
-        k_enc = hashlib.sha256(s_bytes + b"eve-v2.1-end").digest()
+        k_enc = hashlib.sha256(s_bytes + b"eve-v2.1-enc").digest()
         k_mac = hashlib.sha256(s_bytes + b"eve-v2.1-mac").digest()
         s_ssci = hashlib.sha256(s_bytes + b"eve-v2.1-ssci").digest()[0]
 
@@ -49,14 +51,40 @@ class WireProtocolEngine:
     Assembles and validates secure wire-protocol packets.
     Handles temporal anti-replay protection, HMAC signing, and SSCI masking.
     """
-
+    PROTOCOL_BLOCK_SIZE = 16
     DRIFT_MIN_SECONDS = -30.0 #Allow up to 30s client clock skew behind
     DRIFT_MAX_SECONDS = 60.0 #Allow up to 60s packet transit delay
+
+    @classmethod
+    def _derive_hill_matrix(cls, k_enc: bytes, n: int = 2) -> List[List[int]]:
+        """
+        Derives an n x n invertible matrix using the full entropy of K_enc.
+        Uses deterministic seeding to ensure peer-to-peer synchronization.
+        """
+
+        seed = hashlib.sha512(k_enc + b"hill-matrix-salt").digest()
+        idx = 0
+
+        while idx <= len(seed) - (n * n):
+            matrix = []
+            for i in range(n):
+                row = list(seed[idx + i * n: idx + (i + 1) * n])
+                matrix.append(row)
+
+            from cipher_arsenal.cipher_arsenal import HillEngine
+            try:
+                if HillEngine.matrix_det(matrix) % 2 != 0:
+                    return matrix
+            except Exception:
+                pass
+            idx += 1
+
+        raise NonInvertibleMatrixError("Failed to derive a valid matrix from K_enc entropy pool.")
     @classmethod
     def _resolve_effective_key(
         cls,
         engine_id: int,
-        key_param: Optional[Any],
+        key_param: Optional[Union[int, Tuple[int, int], str, bytes, List[List[int]]]],
         k_enc: bytes
     ) -> Any:
         """
@@ -90,7 +118,7 @@ class WireProtocolEngine:
         cls,
         plaintext: str,
         engine_id: int,
-        key_param: Union[int, Tuple[int, int], str, bytes, List[List[int]]],
+        key_param: Union[int, Tuple[int, int], str, bytes, List[List[int]]] = None,
         shared_secret_int: int = 0
     ) -> str:
         """
@@ -101,7 +129,7 @@ class WireProtocolEngine:
 
         k_enc, k_mac, s_ssci = KDFEngine.derive_keys(shared_secret_int)
 
-        current_time = int(time.time())
+        current_time = int(time.time())  # 절차적 복구
         time_prefix = struct.pack(">Q", current_time)
         plaintext_bytes = plaintext.encode('utf-8')
         p_final = time_prefix + plaintext_bytes

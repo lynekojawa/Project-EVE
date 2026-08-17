@@ -37,4 +37,7 @@ between each recursive step is better. <br>
 Second, no mod_inverse in encryption, for efficiency use when decrypt but no encrypt <br>
 Before moving back to phase 2 updating script test: one, add Edge cases, Two, add affine invalid key text<br>
 Passed all test with edge cases. <br>
-Phase 2 auditing the Orion's script timestamp 6:00pm-> finished transcribe working on logic. 
+Phase 2 auditing the Orion's script timestamp 6:00pm-> finished transcribe working on logic. <br>
+Podo reported following, one. Deterministic key derivation in hill matrix,two, SSCI potential leaking, Three, Stability vs strictness<br>
+fixing those three parts. <br>
+Podo's audit added inspection tomorrow with mini-dante and mini-podo. 
