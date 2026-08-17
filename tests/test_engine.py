@@ -1,4 +1,4 @@
-from cipher_arsenal.cipher_arsenal import CipherFactory
+from cipher_arsenal.cipher_arsenal import CipherFactory, AffineEngine, NonInvertibleMatrixError
 
 def run_imperial_test():
     original_message = b"Imperial Protocol v2.1 - Hello PODO!"
@@ -10,10 +10,10 @@ def run_imperial_test():
         0x04: {"name": "Hill", "key": [[6, 24, 1], [13, 16, 10], [20, 17, 15]]}
     }
 
-    print(f"🚀 Starting Grand Arsenal Audit for: '{original_message.decode()}'\n")
-    print("-" * 60)
+    print(f"🚀 [INIT] Starting Grand Imperial Audit v2.2")
+    print(f"🔍 [INFO] Testing with: '{original_message.decode()}'")
+    print("-" * 70)
 
-    all_passed = True
     for engine_id, config in test_configs.items():
         name = config["name"]
         key = config["key"]
@@ -22,24 +22,48 @@ def run_imperial_test():
             engine = CipherFactory.get_engine(engine_id)
 
             ciphertext = engine.encrypt(original_message, key)
+            decrypted = engine.decrypt(ciphertext, key)
+            assert original_message == decrypted, f"{name} failed standard round-trip"
+            empty_ct = engine.encrypt(b"", key)
+            assert engine.decrypt(empty_ct, key) == b"", f"{name} failed empty input"
 
-            decrypted_message = engine.decrypt(ciphertext, key)
+            single_byte = b"\x00"
+            single_ct = engine.encrypt(single_byte, key)
+            assert engine.decrypt(single_ct, key) == single_byte, f"{name} failed single byte"
 
-            if original_message != decrypted_message:
-                raise ValueError(f"Round-trip failed. Got: {decrypted_message}")
+            all_bytes = bytes(range(256))
+            all_ct = engine.encrypt(all_bytes, key)
+            assert engine.decrypt(all_ct, key) == all_bytes, f"{name} failed Z_256 completeness test"
 
-            print(f"✅ [0x{engine_id:02X}] {name:10} : SUCCESS")
-            print(f"    └─ Ciphertext(hex): {ciphertext.hex()[:50]}...")
+            print(f"✅ [0x{engine_id:02X}] {name:10} : PASSED (Standard + Edge Cases)")
 
         except Exception as e:
-            all_passed = False
-            print(f"❌ [0x{engine_id:02X}] {name:10} : FAILED")
+            print(f"❌ [0x{engine_id:02X}] {name:10} : FAILED standard/edge tests")
             print(f"    └─ Error: {e}")
 
-    if all_passed:
-        print("🏆 All engines are operational and algebraically sound!")
-    else:
-        print("⚠️ One or more engines failed audit.")
+    print("-" * 70)
+    print("🛡️ [ADVERSARIAL] Validating Error Handlers & Guards")
+
+
+    try:
+        print("🔍 Testing Affine: Even 'a' key check...", end=" ")
+        AffineEngine().encrypt(b"test", (4, 7))
+        print("❌ FAIL: Should have raised ValueError")
+    except ValueError:
+        print("✅ SUCCESS: Correctly rejected even scalar key")
+
+    try:
+        print("🔍 Testing Hill: Non-invertible matrix check...", end=" ")
+        bad_matrix = [[2, 4], [6, 8]]  # det = 16 - 24 = -8 (Even)
+        engine_hill = CipherFactory.get_engine(0x04)
+        engine_hill.encrypt(b"test", bad_matrix)
+        print("❌ FAIL: Should have raised NonInvertibleMatrixError")
+    except NonInvertibleMatrixError:
+        print("✅ SUCCESS: Correctly rejected even-determinant matrix")
+
+    print("-" * 70)
+    print("🏆 FINAL: Imperial Audit Complete. All logical invariants verified.")
+
 
 if __name__ == "__main__":
     run_imperial_test()

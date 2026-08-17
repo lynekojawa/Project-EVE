@@ -108,7 +108,8 @@ class AffineEngine(BaseCipher):
 
     def encrypt(self, plaintext: bytes, key: Tuple[int, int]) -> bytes:
         a, b = key[0] % 256, key[1] % 256
-        self.mod_inverse_256(a)
+        if a % 2 == 0:
+            raise ValueError(f"Scalar key 'a'={a} is even; not invertible in Z_256.")
         return bytes([(a * p + b) % 256 for p in plaintext])
 
     def decrypt(self, ciphertext: bytes, key: Tuple[int, int]) -> bytes:
@@ -142,15 +143,16 @@ class HillEngine(BaseCipher):
     def matrix_det(matrix: List[List[int]]) -> int:
         n = len(matrix)
         if n == 1:
-            return matrix[0][0]
+            return matrix[0][0] % 256
         if n == 2:
-            return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]
+            return (matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]) %256
 
         det = 0
         for j in range(n):
             submatrix = [row[:j] + row[j + 1:] for row in matrix[1:]]
             sign = 1 if j % 2 == 0 else -1
-            det += sign * matrix[0][j] * HillEngine.matrix_det(submatrix)
+            cofactor = (sign * matrix[0][j] * HillEngine.matrix_det(submatrix)) % 256
+            det = (det + cofactor) % 256
         return det
 
     @staticmethod

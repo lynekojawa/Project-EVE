@@ -29,3 +29,11 @@ part2<br>
 initiated phase 2 with Orion, waiting for Dante's response. 
 it kinda make sense why for all lecture notes and textbooks says (keyGen, Enc, Dec) and they are all written as Tuple <br>
 gosh, I was working on protocol_engine today and Orion only gave me 2 engines, is this a sign of drift or lazyness. For real<br>
+
+(8/17)
+Continue on the project starting with Dante's comments. <br> 
+First, Artisan vs Efficiency, currently my Hill code does modular at the end, but to reduce computation time, doing modulars<br>
+between each recursive step is better. <br> 
+Second, no mod_inverse in encryption, for efficiency use when decrypt but no encrypt <br>
+Before moving back to phase 2 updating script test: one, add Edge cases, Two, add affine invalid key text<br>
+Passed all test with edge cases. 
