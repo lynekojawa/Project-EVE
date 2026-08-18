@@ -105,11 +105,7 @@ class WireProtocolEngine:
             return k_enc
 
         elif engine_id == 0x04:
-            k0 = k_enc[0] | 1
-            k1 = k_enc[1] & 0xFE
-            k2 = k_enc[2]
-            k3 = k_enc[3] | 1
-            return [[k0, k1], [k2, k3]]
+            return cls._derive_hill_matrix(k_enc)
         else:
             raise ValueError("Unsupported Engine ID: 0x{engine_id:02X}")
 
@@ -142,7 +138,7 @@ class WireProtocolEngine:
         e_masked = bytes([engine_id ^ s_ssci])
 
         mac_payload = e_masked + ciphertext
-        signature = hmac.net(k_mac, mac_payload, hashlib.sha256).digest()
+        signature = hmac.new(k_mac, mac_payload, hashlib.sha256).digest()
         wire_packet = signature + mac_payload
         return wire_packet.hex()
 
@@ -183,7 +179,7 @@ class WireProtocolEngine:
 
         unmasked_engine_id = e_masked ^ s_ssci
         cipher_engine = CipherFactory.get_engine(unmasked_engine_id)
-        effective_key = cls._resolved_effective_key(unmasked_engine_id, override_key_param, k_enc)
+        effective_key = cls._resolve_effective_key(unmasked_engine_id, override_key_param, k_enc)
 
         p_final = cipher_engine.decrypt(ciphertext, effective_key)
 
@@ -196,7 +192,7 @@ class WireProtocolEngine:
         current_time = int(time.time())
         delta_t = current_time - msg_timestamp
 
-        if delta_t > cls.DRIFT_MIN_SECONDS:
+        if delta_t > cls.DRIFT_MAX_SECONDS:
             raise ReplayAttackError(
                 f"REPLAY ATTACK REJECTED: Payload age {delta_t:.1f}s exceeds limit ({cls.DRIFT_MAX_SECONDS}s)."
             )
@@ -204,8 +200,12 @@ class WireProtocolEngine:
             raise ClockSkewError(
                 f"CLOCK SKEW REJECTED: Payload timestamp is {abs(delta_t):.1f}s in the future."
             )
+        try:
+            plaintext = msg_bytes.decode('utf-8')
+        except UnicodeDecodeError as e:
+            raise ProtocolError("Decrypted payload is not valid UTF-8.") from e
 
-        return unmasked_engine_id, msg_bytes.decode('utf-8', errors='replace'), msg_timestamp
+        return unmasked_engine_id, plaintext, msg_timestamp
 
 
 

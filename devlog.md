@@ -41,3 +41,21 @@ Phase 2 auditing the Orion's script timestamp 6:00pm-> finished transcribe worki
 Podo reported following, one. Deterministic key derivation in hill matrix,two, SSCI potential leaking, Three, Stability vs strictness<br>
 fixing those three parts. <br>
 Podo's audit added inspection tomorrow with mini-dante and mini-podo. 
+
+(8/19)
+Continue the project, inspect with mini-podo and dante: <br>
+Phase 2 — Protocol & Security Layer Fixes
+Fixed HMAC API call
+Replaced invalid hmac.net() with hmac.new() in WireProtocolEngine.pack_message().
+Fixed effective key resolver reference
+Corrected _resolved_effective_key() to _resolve_effective_key() in WireProtocolEngine.unpack_message().
+Fixed replay attack time-window validation
+Changed the replay threshold from DRIFT_MIN_SECONDS to DRIFT_MAX_SECONDS.
+Correctly enforces the intended -30s ≤ delta_t ≤ +60s acceptance window.
+Enforced strict UTF-8 decoding
+Removed errors='replace'.
+Invalid UTF-8 now raises ProtocolError instead of silently replacing malformed bytes.
+Unified Hill cipher key derivation
+Updated engine_id == 0x04 to use _derive_hill_matrix(k_enc).
+Connects the deterministic, entropy-derived Hill matrix generator to the actual key-resolution path.
+mini-podo audit-> fixed. -> move to dante
