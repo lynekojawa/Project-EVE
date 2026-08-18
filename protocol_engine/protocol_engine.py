@@ -11,7 +11,7 @@ import hmac
 import struct
 import time
 from typing import Tuple, Union, List, Optional, Any
-from cipher_arsenal.cipher_arsenal import CipherFactory, CryptoError, NonInvertibleMatrixError
+from cipher_arsenal.cipher_arsenal import CipherFactory, CryptoError, NonInvertibleMatrixError, HillEngine
 
 class ProtocolError(CryptoError):
     """Base exception for protocol wire-level processing failures"""
@@ -70,8 +70,6 @@ class WireProtocolEngine:
             for i in range(n):
                 row = list(seed[idx + i * n: idx + (i + 1) * n])
                 matrix.append(row)
-
-            from cipher_arsenal.cipher_arsenal import HillEngine
             try:
                 if HillEngine.matrix_det(matrix) % 2 != 0:
                     return matrix
@@ -79,7 +77,7 @@ class WireProtocolEngine:
                 pass
             idx += 1
 
-        raise NonInvertibleMatrixError("Failed to derive a valid matrix from K_enc entropy pool.")
+        raise ValueError(f"Entropy pool exhausted deriving {n}x{n} Hill matrix from K_enc.")
     @classmethod
     def _resolve_effective_key(
         cls,
@@ -107,7 +105,7 @@ class WireProtocolEngine:
         elif engine_id == 0x04:
             return cls._derive_hill_matrix(k_enc)
         else:
-            raise ValueError("Unsupported Engine ID: 0x{engine_id:02X}")
+            raise ValueError(f"Unsupported Engine ID: 0x{engine_id:02X}")
 
     @classmethod
     def pack_message(
@@ -125,7 +123,7 @@ class WireProtocolEngine:
 
         k_enc, k_mac, s_ssci = KDFEngine.derive_keys(shared_secret_int)
 
-        current_time = int(time.time())  # 절차적 복구
+        current_time = int(time.time())
         time_prefix = struct.pack(">Q", current_time)
         plaintext_bytes = plaintext.encode('utf-8')
         p_final = time_prefix + plaintext_bytes
