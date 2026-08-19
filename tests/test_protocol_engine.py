@@ -6,6 +6,8 @@ import time
 import struct
 import hmac
 import hashlib
+import secrets
+from cipher_arsenal.cipher_arsenal import CipherFactory
 from protocol_engine.protocol_engine import (
     WireProtocolEngine,
     KDFEngine,
@@ -140,11 +142,12 @@ def run_adversarial_tests():
         k_enc, k_mac, s_ssci = KDFEngine.derive_keys(TEST_SECRET)
         old_time = int(time.time()) - 120
         time_prefix = struct.pack(">Q", old_time)
-        p_final = time_prefix + TEST_MESSAGE.encode("utf-8")
+        raw = time_prefix + TEST_MESSAGE.encode("utf-8")
+        iv = secrets.token_bytes(8)
+        p_final = bytes(raw[i] ^ iv[i % 8] for i in range(len(raw)))
 
-        from cipher_arsenal.cipher_arsenal import CipherFactory
         engine = CipherFactory.get_engine(0x01)
-        ciphertext = engine.encrypt(p_final, k_enc[0])
+        ciphertext = engine.encrypt(p_final, k_enc[0]) + iv
         e_masked = bytes([0x01 ^ s_ssci])
         mac_payload = e_masked + ciphertext
         signature = hmac.new(k_mac, mac_payload, hashlib.sha256).digest()

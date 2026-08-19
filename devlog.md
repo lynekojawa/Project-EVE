@@ -200,3 +200,21 @@ mini-podo audit-> fixed. -> move to dante
 Test passed! 
 Initializing phase 3! 
 SQL ready(kind of) move to DB manager.py
+
+(8/19)<br>
+mini-Dante pulled out My hill was starting 000000 so I updated the engine. 
+protocol_engine.py → WireProtocolEngine → pack_message:
+
+Generated a random 8-byte IV
+XORed it against the full plaintext before encrypting — this destroys the zero-byte pattern in the timestamp
+Appended IV to the end of ciphertext so the receiver has it
+
+protocol_engine.py → WireProtocolEngine → unpack_message:
+
+Stripped the last 8 bytes off ciphertext to recover IV
+After decryption, XORed the same IV back to recover the original plaintext
+
+tests/test_protocol_engine.py → run_adversarial_tests → Test 2 replay block:
+
+The manual packet construction wasn't using IV, so unpack was reading garbage as the timestamp
+Updated it to match the new format — IV generated, XORed in, appended to ciphertext

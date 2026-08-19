@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import struct
 import time
+import secrets
 from typing import Tuple, Union, List, Optional, Any
 from cipher_arsenal.cipher_arsenal import CipherFactory, CryptoError, NonInvertibleMatrixError, HillEngine
 
@@ -126,12 +127,15 @@ class WireProtocolEngine:
         current_time = int(time.time())
         time_prefix = struct.pack(">Q", current_time)
         plaintext_bytes = plaintext.encode('utf-8')
-        p_final = time_prefix + plaintext_bytes
+        iv = secrets.token_bytes(8)
+        raw = time_prefix + plaintext_bytes
 
+        p_final = bytes(raw[i] ^ iv[i % 8] for i in range(len(raw)))
         cipher_engine = CipherFactory.get_engine(engine_id)
+
         effective_key = cls._resolve_effective_key(engine_id, key_param, k_enc)
 
-        ciphertext = cipher_engine.encrypt(p_final, effective_key)
+        ciphertext = cipher_engine.encrypt(p_final, effective_key) + iv
 
         e_masked = bytes([engine_id ^ s_ssci])
 
@@ -169,7 +173,9 @@ class WireProtocolEngine:
         received_signature = wire_bytes[:32]
         mac_payload = wire_bytes[32:]
         e_masked = mac_payload[0]
-        ciphertext = mac_payload[1:]
+        ciphertext_with_iv = mac_payload[1:]
+        ciphertext = ciphertext_with_iv[:-8]
+        iv = ciphertext_with_iv[-8:]
 
         expected_signature = hmac.new(k_mac, mac_payload, hashlib.sha256).digest()
         if not hmac.compare_digest(received_signature, expected_signature):
@@ -179,7 +185,8 @@ class WireProtocolEngine:
         cipher_engine = CipherFactory.get_engine(unmasked_engine_id)
         effective_key = cls._resolve_effective_key(unmasked_engine_id, override_key_param, k_enc)
 
-        p_final = cipher_engine.decrypt(ciphertext, effective_key)
+        decrypted_raw = cipher_engine.decrypt(ciphertext, effective_key)
+        p_final = bytes(decrypted_raw[i] ^ iv[i % 8] for i in range(len(decrypted_raw)))
 
         if len(p_final) < 8:
             raise ProtocolError("Decrypted payload too short to contain timestamp header")
