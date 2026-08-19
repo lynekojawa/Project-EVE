@@ -218,3 +218,7 @@ tests/test_protocol_engine.py → run_adversarial_tests → Test 2 replay block:
 
 The manual packet construction wasn't using IV, so unpack was reading garbage as the timestamp
 Updated it to match the new format — IV generated, XORed in, appended to ciphertext
+
+Update SQL table uid, uuid with mini-dante. 
+
+refactor db_manager.py to db_manger_v1.py, create db_manager.py

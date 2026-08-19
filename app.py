@@ -6,7 +6,7 @@ import altair as alt
 import string
 import collections
 from cipher_arsenal.cipher_engine import CryptoEngine
-from database.db_manager import DBManager
+from database.db_manager_v1 import DBManager
 
 
 st.set_page_config(page_title = "Project EVE", layout = "wide")
