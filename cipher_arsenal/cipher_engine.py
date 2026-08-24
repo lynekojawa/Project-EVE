@@ -1,10 +1,13 @@
-
-
-import secrets
+"""
+Bridges Presentation layer (app.py) to cipher arsenal and protocol_engine.
+"""
 import json
+import secrets
+from typing import Tuple, Dict, Any, Union, List, Optional
+from protocol_engine.protocol_engine import WireProtocolEngine, ProtocolError, HMACVerificationError, ReplayAttackError, ClockSkewError
+from cipher_arsenal.cipher_arsenal import CaesarEngine, CryptoError
 
-#RFC3526 - 1536 bit safe prime
-P_Hex ="""
+P_HEX = """
         FFFFFFFF FFFFFFFF C90FDAA2 2168C234 C4C6628B 80DC1CD1
       29024E08 8A67CC74 020BBEA6 3B139B22 514A0879 8E3404DD
       EF9519B3 CD3A431B 302B0A6D F25F1437 4FE1356D 6D51C245
@@ -13,84 +16,100 @@ P_Hex ="""
       C2007CB8 A163BF05 98DA4836 1C55D39A 69163FA8 FD24CF5F
       83655D23 DCA3AD96 1C62F356 208552BB 9ED52907 7096966D
       670C354E 4ABC9804 F1746C08 CA237327 FFFFFFFF FFFFFFFF
-        """
-
-P = int(P_Hex.replace("\n", "").replace(" ",""), 16)
+"""
+P = int(P_HEX.replace("\n", "").replace(" ", ""), 16)
 G = 2
 
 class CryptoEngine:
-    def __init__(self, bit_length = 1536):
-        self.p = P
-        self.g = G
+    """ Core cryptographic interface preserving legacy signatures and routing v2.1 with protocols."""
+    def __init__(self, bit_length: int = 1536):
+        self.p: int = P
+        self.g: int = G
+        #I am really not sure where the caesarcompat from, because I don't think I have this.
+        self._caesar_compat: CaesarEngine = CaesarEngine()
 
-    def extended_gcd(self, a,b):
-        old_r, r = a, b
-        old_s, s = 1, 0
-        old_t, t = 0, 1
-        while r != 0:
-            quotient = old_r // r
-            old_r, r = r, old_r - quotient * r
-            old_s, s = s, old_s - quotient * s
-            old_t, t = t, old_t - quotient * t
-        return old_r, old_s, old_t
-
-    def mod_inverse(self, a, m):
-        gcd, x, y = self.extended_gcd(a,m)
-        if gcd != 1:
-            raise ValueError("modular inverse does not exist")
-        else:
-            result = (x % m + m) % m
-            return result
-
-    def generate_keypair(self):
+    def generate_keypair(self) -> Tuple[int, int]:
+        """Generates ElGamal/DH private and public key pair"""
         private_key = secrets.randbelow(self.p - 3) + 2
         public_key = pow(self.g, private_key, self.p)
         return public_key, private_key
 
-    def encrypt_key(self, session_shift, public_key):
-        key_y = secrets.randbelow(self.p - 3) + 2
-        c1 = pow(self.g, key_y, self.p)
-        shared_message = pow(public_key, key_y, self.p)
-        c2 = (session_shift * shared_message) % self.p
-        return c1, c2
+    def derive_shared_secret(self, peer_public_key: int, private_key: int)-> int:
+        """Computes Diffie-Hillman shared secret: S= (peer_pub)^priv mod P."""
+        return pow(peer_public_key, private_key, self.p)
 
-    def decrypt_key(self, c1, c2, private_key):
-        shared_message = pow(c1, private_key, self.p)
-        s_inv = self.mod_inverse(shared_message, self.p)
-        session_shift = (c2 * s_inv) % self.p
-        return session_shift
+#skip apply caesar because I don't need that.
+    def send_message(self, plaintext: str, recipient_public_key: int, engine_id: int, key_param: Optional[Any]= None) -> Tuple[str,str]:
+        """
+        Executes DH exchange, key expansion, and wire protocol packing,
+        Returns:
+            Tuple[ciphertext_hex (str), key_paylaod_json (str)]
+        """
+        y_ephem = secrets.randbelow(self.p - 3)+2
+        c1 = pow(self.g, y_ephem, self.p)
 
-    def apply_caesar(self, text, raw_shift, decrypt=False):
-        shift = (raw_shift % 26)
-        if decrypt: shift = -shift
+        shared_secret = pow(recipient_public_key, y_ephem, self.p)
 
-        result = []
-        for char in text:
-            if char.isalpha():
-                base = 65 if char.isupper() else 97
-                result.append(chr((ord(char) - base + shift) % 26 + base))
-            else:
-                result.append(char)
-        return "".join(result)
+        ciphertext_hex = WireProtocolEngine.pack_message(
+            plaintext=plaintext,
+            engine_id=engine_id,
+            key_param=key_param,
+            shared_secret_int=shared_secret
+        )
+        key_payload = json.sumps({"c1": c1})
+        return ciphertext_hex, key_payload
 
-    def send_message(self, plaintext, recipient_public_key):
-        session_shift = secrets.randbelow(26)
-        ciphertext = self.apply_caesar(plaintext, session_shift, decrypt = False)
-        c1, c2 = self.encrypt_key(session_shift, recipient_public_key)
+    def receive_message(
+        self,
+        ciphertext_hex: str,
+        encrypted_key_json: str,
+        recipient_private_key: int,
+        override_key_param: Optional[Any] = None
+    )-> Dict[str, Any]:
+        """
+        Recovers shared secret, validates HMAC, unmask SSCIm checks anti-replay, and decrypts.
+        Returns:
+            Dict containing decrypted status, telemetry, and plaintext
+        """
+        try:
+            key_data = json.loads(encrypted_key_json)
+            c1 = int(key_data['c1'])
 
-        key_payload = json.dumps({"c1": c1, "c2": c2})
+            shared_secret = pow(c1, recipient_private_key, self.p)
 
-        return ciphertext, key_payload
+            engine_id, plaintext, timestamp = WireProtocolEngine.unpack_message(
+                ciphertext_hex=ciphertext_hex,
+                shared_secret_int=shared_secret,
+                override_key_param=override_key_param
+            )
+            engine_names = {
+                0x01: "Caesar (Z_256)",
+                0x02: "Affine (Z_256)",
+                0x03: "Vigenère (Z_256)",
+                0x04: "Hill 2x2 Matrix (Z_256)"
+            }
+
+            return {
+                "success": True,
+                "plaintext": plaintext,
+                "engine_id": engine_id,
+                "engine_name": engine_names.get(engine_id, f"Unknown (0x{engine_id:02X})"),
+                "timestamp": timestamp,
+                "error": None
+            }
+
+        except HMACVerificationError as e:
+            return {"success": False, "plaintext": None, "error": f"HMAC Signature Mismatch: {e}"}
+        except ReplayAttackError as e:
+            return {"success": False, "plaintext": None, "error": f"Anti-Replay Violation: {e}"}
+        except ClockSkewError as e:
+            return {"success": False, "plaintext": None, "error": f"Clock Skew Error: {e}"}
+        except CryptoError as e:
+            return {"success": False, "plaintext": None, "error": f"Cryptographic Failure: {e}"}
+        except Exception as e:
+            return {"success": False, "plaintext": None, "error": f"Decryption Protocol Error: {e}"}
 
 
-    def receive_message(self, ciphertext, encrypted_key_json, recipient_private_key):
-        key_data = json.loads(encrypted_key_json)
-        c1 = key_data['c1']
-        c2 = key_data['c2']
 
-        recovered_shift = self.decrypt_key(c1, c2, recipient_private_key)
-        plaintext = self.apply_caesar(ciphertext, recovered_shift, decrypt=True)
-
-        return plaintext
 
 

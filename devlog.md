@@ -226,3 +226,6 @@ refactor db_manager.py to db_manger_v1.py, create db_manager.py
 (8/24)
 
 Continue the progress. audit db_manager with podo_version, import hashlib, and make sure it works with uid. <br>
+Phase 3 wrapped up, Initializing phase 4. Start with cipher_engine.py that contains ElGamal-> DH key exchange. <br>
+Caesar is living in cipher_engine this needs to deleted, cipher_arsenal has Ceasar engine defined it <br>
+it is just dubplicate. <br>

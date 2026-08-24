@@ -5,7 +5,7 @@ import pandas as pd
 import altair as alt
 import string
 import collections
-from cipher_arsenal.cipher_engine import CryptoEngine
+from cipher_arsenal.cipher_engine_ver1 import CryptoEngine
 from database.db_manager_v1 import DBManager
 
 
