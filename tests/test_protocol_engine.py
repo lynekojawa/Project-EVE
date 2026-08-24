@@ -18,7 +18,7 @@ from protocol_engine.protocol_engine import (
 )
 
 TEST_SECRET = 123456789012345678901234567890
-TEST_MESSAGE = "The quick brown fox jumps over the lazy dog"
+TEST_MESSAGE = "JOBS-RESEARCHER@REDBALLOONSECURITY.COM"
 
 def section(title: str):
     print(f"\n{'═' * 70}")

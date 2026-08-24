@@ -222,3 +222,7 @@ Updated it to match the new format — IV generated, XORed in, appended to ciphe
 Update SQL table uid, uuid with mini-dante. 
 
 refactor db_manager.py to db_manger_v1.py, create db_manager.py
+
+(8/24)
+
+Continue the progress. audit db_manager with podo_version, import hashlib, and make sure it works with uid. <br>

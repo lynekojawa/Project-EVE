@@ -6,6 +6,7 @@ Implement zero-trust database routing with standard client separation and
 
 import os
 import logging
+import hashlib
 from typing import List, Dict, Tuple, Optional, Any
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -39,13 +40,33 @@ class DBManager:
                 "SUPABASE_SERVICE_ROLE_KEY not configured."
                 "Adversary consol will operate using standard client permissions."
             )
+    def _get_internal_email(self, username: str)-> str:
+        """Helper: Converts usernames to an internal email for Supabase Auth"""
+        return f"{username}@eve.internal"
 
     def register_profile(self, username: str, public_key: int) -> Tuple[bool, str]:
-        """Registers a new user and stores their ElGamal public key"""
+        """
+        Registers a new user and stores their ElGamal public key
+        1. Creates Auth User (for UID generation).
+        2. Creates Profile (binding UID to Username)
+        """
         try:
-            data = {"username": username, "public_key": str(public_key)}
-            self.client.table("eve_profiles").insert(data).execute()
-            logger.info(f"Successfully registered user: {username}")
+            fake_password = hashlib.sha256(public_key.encode()).hexidigest()
+
+            res = self.client.auth.sign_up({
+                "email": self._get_internal_email(username),
+                "password": fake_password
+            })
+            if not res.user:
+                return False, "Auth registration failed"
+            profile_data = {
+                "uid": res.user.id,
+                "username": username,
+                "public_key": public_key
+            }
+            self.client.table("eve_profiles").insert(profile_data).execute()
+
+            logger.info(f"Imperial Citizen Registered: {username}")
             return True, "Success"
 
         except APIError as e:
@@ -59,25 +80,20 @@ class DBManager:
             logger.error(f"Unexpected error during registration: {ex}")
             return False, "Registration error"
 
-    def fetch_profile(self, username: str) -> Optional[Dict[str, Any]]:
-        """Retrieves user profile and public key from dictionary"""
+    def login_user(self, username: str, public_key_h: str) -> bool:
+        """Logs in using username and public key to activate RLS session."""
         try:
-            result = self.client.table("eve_profiles")\
-                        .select("*")\
-                        .eq("username", username)\
-                        .execute()
-            return result.data[0] if result.data else None
+            fake_password = hashlib.sha256(public_key_h.encode()).hexdigest()
+            res = self.client.auth.sign_in_with_password({
+                "email": self._get_internal_email(username),
+                "password": fake_password
+            })
+            return True if res.session else False
         except Exception as e:
-            logger.error(f"Failed to fetch profile for {username}: {e}")
-            return None
+            logger.error(f"Login failed: {e}")
+            return False
 
-    def upload_message(
-        self,
-        sender: str,
-        recipient: str,
-        ciphertext: str,
-        encrypted_key_json: str
-    ) -> bool:
+    def upload_message(self, sender: str, recipient: str, ciphertext: str, encrypted_key_json: str) -> bool:
         """Uploads an encrypted wire-protocol packet and key-payload"""
         try:
             data = {
@@ -93,17 +109,17 @@ class DBManager:
             logger.error(f"Failed to upload wire packet: {e}")
             return False
 
-    def fetch_messages(self, recipient: str) -> List[Dict[str, Any]]:
+    def fetch_messages(self, username: str) -> List[Dict[str, Any]]:
         """Fetches inbox messages addressed to the authenticated recipient"""
         try:
             result = self.client.table("eve_messages")\
                         .select("*")\
-                        .eq("recipient", recipient)\
+                        .eq("recipient", username)\
                         .order("created_at", desc=False)\
                         .execute()
             return result.data if result.data else []
         except Exception as e:
-            logger.error(f"Failed to fetch inbox messages for {recipient}:{e}")
+            logger.error(f"Failed to fetch inbox messages for {username}:{e}")
             return []
 
     def delete_message(self, message_id: str)-> bool:
