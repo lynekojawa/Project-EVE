@@ -51,7 +51,7 @@ class DBManager:
         2. Creates Profile (binding UID to Username)
         """
         try:
-            fake_password = hashlib.sha256(public_key.encode()).hexidigest()
+            fake_password = hashlib.sha256(str(public_key).encode()).hexdigest()
 
             res = self.client.auth.sign_up({
                 "email": self._get_internal_email(username),
@@ -80,10 +80,10 @@ class DBManager:
             logger.error(f"Unexpected error during registration: {ex}")
             return False, "Registration error"
 
-    def login_user(self, username: str, public_key_h: str) -> bool:
+    def login_user(self, username: str, public_key: int) -> bool:
         """Logs in using username and public key to activate RLS session."""
         try:
-            fake_password = hashlib.sha256(public_key_h.encode()).hexdigest()
+            fake_password = hashlib.sha256(str(public_key).encode()).hexdigest()
             res = self.client.auth.sign_in_with_password({
                 "email": self._get_internal_email(username),
                 "password": fake_password
@@ -125,9 +125,13 @@ class DBManager:
     def delete_message(self, message_id: str)-> bool:
         """Permanently purges an encrypted message row from cloud storage."""
         try:
-            self.client.table("eve_messages").delete().eq("id", message_id).execute()
-            logger.info(f"Purged message ID: {message_id}")
-            return True
+            result = self.client.table("eve_messages").delete().eq("id", message_id).execute()
+            if result.data:
+                logger.info(f"Purged message ID: {message_id}")
+                return True
+            else:
+                logger.warning(f"Delete attempted but no row found or RLS blocked: {message_id}")
+                return False
         except Exception as e:
             logger.error(f"Database error during message purge: {e}")
             return False
