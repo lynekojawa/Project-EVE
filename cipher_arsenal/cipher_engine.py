@@ -20,6 +20,13 @@ P_HEX = """
 P = int(P_HEX.replace("\n", "").replace(" ", ""), 16)
 G = 2
 
+ENGINE_NAMES: Dict[int, str] = {
+            0x01: "Caesar (Z_256)",
+            0x02: "Affine (Z_256)",
+            0x03: "Vigenère (Z_256)",
+            0x04: "Hill 2x2 Matrix (Z_256)"
+        }
+
 class CryptoEngine:
     """ Core cryptographic interface preserving legacy signatures and routing v2.1 with protocols."""
     def __init__(self):
@@ -54,11 +61,11 @@ class CryptoEngine:
                 result.append(char)
         return "".join(result)
 
-    def send_message(self, plaintext: str, recipient_public_key: int, engine_id: int, key_param: Optional[Any]= None) -> Tuple[str,str]:
+    def send_message(self, plaintext: str, recipient_public_key: int, engine_id: int=0x01, key_param: Optional[Any]= None) -> Tuple[str,str]:
         """
         Executes DH exchange, key expansion, and wire protocol packing,
         Returns:
-            Tuple[ciphertext_hex (str), key_paylaod_json (str)]
+            Tuple[ciphertext_hex (str), key_payload_json (str)]
         """
         try:
             y_ephem = secrets.randbelow(self.p - 3) + 2
@@ -68,7 +75,7 @@ class CryptoEngine:
 
             ciphertext_hex = WireProtocolEngine.pack_message(
                 plaintext=plaintext,
-                engine_id=engine_id,
+                engine_id= engine_id,
                 key_param=key_param,
                 shared_secret_int=shared_secret
             )
@@ -81,6 +88,7 @@ class CryptoEngine:
 
         except Exception as e:
             raise RuntimeError(f"Send error: {e}") from e
+
 
     def receive_message(
         self,
@@ -105,13 +113,6 @@ class CryptoEngine:
                 shared_secret_int=shared_secret,
                 override_key_param=override_key_param
             )
-
-            ENGINE_NAMES = {
-                0x01: "Caesar (Z_256)",
-                0x02: "Affine (Z_256)",
-                0x03: "Vigenère (Z_256)",
-                0x04: "Hill 2x2 Matrix (Z_256)"
-            }
 
             return {
                 "success": True,

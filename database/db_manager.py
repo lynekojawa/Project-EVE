@@ -38,7 +38,7 @@ class DBManager:
         else:
             logger.warning(
                 "SUPABASE_SERVICE_ROLE_KEY not configured."
-                "Adversary consol will operate using standard client permissions."
+                "Adversary console will operate using standard client permissions."
             )
     def _get_internal_email(self, username: str)-> str:
         """Helper: Converts usernames to an internal email for Supabase Auth"""
@@ -51,6 +51,8 @@ class DBManager:
         2. Creates Profile (binding UID to Username)
         """
         try:
+        #Note: Password Derived from public key for demo purpose only
+        #In Production, users must supply an independent password credential
             fake_password = hashlib.sha256(str(public_key).encode()).hexdigest()
 
             res = self.client.auth.sign_up({
@@ -62,7 +64,7 @@ class DBManager:
             profile_data = {
                 "uid": res.user.id,
                 "username": username,
-                "public_key": public_key
+                "public_key": str(public_key)
             }
             self.client.table("eve_profiles").insert(profile_data).execute()
 
@@ -79,6 +81,18 @@ class DBManager:
         except Exception as ex:
             logger.error(f"Unexpected error during registration: {ex}")
             return False, "Registration error"
+
+    def fetch_profile(self, username: str) -> Optional[Dict[str, Any]]:
+        """Fetches a user's public profile from the directory."""
+        try:
+            result = self.client.table("eve_profiles") \
+                .select("*") \
+                .eq("username", username) \
+                .execute()
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.error(f"Failed to fetch profile for {username}: {e}")
+            return None
 
     def login_user(self, username: str, public_key: int) -> bool:
         """Logs in using username and public key to activate RLS session."""
