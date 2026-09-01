@@ -229,3 +229,8 @@ Continue the progress. audit db_manager with podo_version, import hashlib, and m
 Phase 3 wrapped up, Initializing phase 4. Start with cipher_engine.py that contains ElGamal-> DH key exchange. <br>
 Caesar is living in cipher_engine this needs to deleted, cipher_arsenal has Ceasar engine defined it <br>
 it is just dubplicate. <br>
+
+(9/1)
+Continue the project, my goal is finish this by this or next week and deploy. XD
+I had to argue with mini-dante about how ElGamal structure hasn't changed it yet. I am being very clear EVE takse ElGamal<br>
+it just added 3 classical engines plus some digital signature stuffs that shouldn't change anything. <br>
