@@ -234,3 +234,6 @@ it is just dubplicate. <br>
 Continue the project, my goal is finish this by this or next week and deploy. XD
 I had to argue with mini-dante about how ElGamal structure hasn't changed it yet. I am being very clear EVE takse ElGamal<br>
 it just added 3 classical engines plus some digital signature stuffs that shouldn't change anything. <br>
+
+(9/2)<br>
+Continue on the UI. making progress, 
