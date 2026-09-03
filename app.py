@@ -20,7 +20,7 @@ st.title("Project EVE v2.1")
 if "engine" not in st. session_state:
     st.session_state.engine = CryptoEngine()
 if "db" not in st.session_state:
-    st.session_staate.db = DBManager()
+    st.session_state.db = DBManager()
 
 with st.sidebar:
     st.title("EVE Identity")
@@ -219,6 +219,168 @@ with col2:
                         if st.button("👁️ Dismiss Local", key=f"dismiss_{msg_id}", use_container_width=True):
                             st.session_state.inbox_msgs = [m for m in st.session_state.inbox_msgs if m['id'] != msg_id]
                             st.rerun()
+    else:
+        st.warning("Authenticate in the sidebar to access encrypted inbox")
+
+st.markdown("""
+    <style>
+        .eve-container {
+            background-color: #0e1117;
+            border: 2px solid #ff4b4b;
+            padding: 25px;
+            border-radius: 10px;
+            color: #f0f2f6;
+            margin-top: 25px;
+        }
+        .eve-header {
+            color: #ff4b4b !important;
+            font-family: 'Courier New', monospace;
+        }
+        .eve-mono {
+            font-family: 'Courier New', monospace;
+            color: #a3b8cc;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("Adversary Telemetry")
+hacker_mode = st.sidebar.toggle("Initialize EVE interception")
+
+if hacker_mode:
+    st.markdown('<div class="eve-container">', unsafe_allow_html=True)
+    st.markdown('<h2 class="eve-header"> Eve\'s Interception & Cryptanalysis Console</h2>', unsafe_allow_html=True)
+    st.markdown('<p class="eve-mono">Real-time network tap targeting the database.</p>', unsafe_allow_html=True)
+
+    target_username = st.text_input("Target User Network Tap", placeholder="e.g., Alice")
+    if "intercepted_msgs" not in st.session_state:
+        st.session_state.intercepted_msgs = []
+
+    if st.button("Tap Cloud Traffic Data Stream", type="primary"):
+        if not target_username.strip():
+            st.error("Specify target username to isolate network tap.")
+        else:
+            captured = st.session_state.db.fetch_targeted_messages(target_username.strip())
+            st.session_state.intercepted_msgs = captured
+            if not captured:
+                st.warning(f"No traffic recorded for target user'{target_username}'.")
+            else:
+                st.success(f"Tap Active: {len(captured)} raw wire packets isolated.")
+
+    if st.session_state.intercepted_msgs:
+        packet_options = {
+            f"{m['sender']} -> {m['recipient']} ({m['created_at'][:19]}) | ID: {m['id'][:8]}": m
+            for m in st.session_state.intercepted_msgs
+        }
+        selected_label = st.selectbox("Select Intercepted Wire Packet:", list(packet_options.keys()))
+        target_packet = packet_options[selected_label]
+        raw_hex = target_packet['ciphertext']
+
+        st.markdown("### Wire Protocol Decomposition")
+        try:
+            raw_bytes = bytes.fromhex(raw_hex)
+            sig_hex = raw_bytes[:32].hex()
+            masked_engine_hex = f"0x{raw_bytes[32]:02X}"
+            payload_hex = raw_bytes[33:].hex()
+
+            t1, t2, t3 = st.colums([2, 1, 3])
+            with t1:
+                st.text_input("HMAC-SHA256 Signature (32B)", value=sig_hex, disabled=True)
+            with t2:
+                st.text_input("SSCI Masked Engine ID (1B)", value=masked_engine_hex, disabled=True)
+            with t3:
+                st.text_input("Ciphertext Payload (C)", value=payload_hex, disabled=True)
+        except Exception:
+            st.code(raw_hex, language="text")
+
+        st.subheader("Select Cryptanalysis Vector")
+        attack_mode = st.radio(
+            "Choose Vector Profile:",
+        [
+                    "1. HMAC Integrity Tamper Simulator",
+                    "2. SSCI Obfuscation Analysis",
+                    "3. Exhaustive Shift Matrix",
+                    "4. Frequency Distribution Spectrum"
+                ],
+                horizontal=True
+            )
+        if attack_mode == "1. HMAC Integrity Tamper Simulator":
+            st.markdown("#### Bit-Flipping & Integrity Verification Probe")
+            st.caption(
+                "Inject bit-level mutations into the intercepted wire packet to test HMAC-SHA256 integrity enforcement.")
+
+            tamper_byte_idx = st.slider("Select Byte Offset to Corrupt:", min_value=0,
+                                        max_value=max(0, len(raw_bytes) - 1), value=33)
+            tamper_mask = st.selectbox("Corrupting XOR Mask:", [0x01, 0x02, 0x04, 0x80, 0xFF],
+                                       format_func=lambda x: f"XOR with 0x{x:02X}")
+
+            tampered_bytes = bytearray(raw_bytes)
+            tampered_bytes[tamper_byte_idx] ^= tamper_mask
+            tampered_hex = tampered_bytes.hex()
+
+            col_orig, col_tamp = st.columns(2)
+            with col_orig:
+                st.markdown("**Original Wire Packet:**")
+                st.code(raw_hex, language="text")
+            with col_tamp:
+                st.markdown("**Tampered Wire Packet:**")
+                st.code(tampered_hex, language="text")
+
+            if "my_priv" in st.session_state:
+                test_result = st.session_state.engine.receive_message(
+                    ciphertext_hex=tampered_hex,
+                    encrypted_key_json=target_packet['encrypted_key_json'],
+                    recipient_private_key=st.session_state.my_priv
+                )
+                if not test_result["success"]:
+                    st.success(f"🛡️ **Integrity Verification Success:** {test_result['error']}")
+                else:
+                    st.error("⚠️ CRITICAL FAILURE: Tampered packet bypassed integrity verification!")
+            else:
+                st.info("Log in with recipient credentials to test client-side tamper rejection.")
+
+        elif attack_mode == "2. SSCI Obfuscation Analysis":
+            st.markdown("#### Shared-Secret Cipher Identification (SSCI) Cryptanalysis")
+            st.caption(
+                "Demonstrating that the masked Engine ID prevents passive engine determination without the DH shared secret.")
+
+            st.info(f"**Observed Wire Engine Byte:** `{masked_engine_hex}`")
+            st.write(
+                "Without $S_{\\text{ssci}} = \\operatorname{SHA256}(S)[0]$, the attacker must evaluate all 4 possible engine hypotheses blindly:")
+
+            hypotheses = []
+            for candidate_id, name in [(0x01, "Caesar"), (0x02, "Affine"), (0x03, "Vigenère"), (0x04, "Hill")]:
+                hypotheses.append({
+                    "Hypothesis Engine ID": f"0x{candidate_id:02X} ({name})",
+                    "Required Mask Byte S_ssci": f"0x{(raw_bytes[32] ^ candidate_id):02X}",
+                    "Complexity Bound": "O(N_engines) brute-force required"
+                })
+            st.dataframe(pd.DataFrame(hypotheses), use_container_width=True)
+
+        elif attack_mode == "3. Exhaustive Shift Matrix":
+            st.markdown("#### Exhaustive Caesar Shift Search")
+            brute_results = []
+            sample_text = payload_hex[:64]
+            for shift in range(1, 26):
+                candidate_text = st.session_state.engine.apply_caesar(sample_text, shift, decrypt=True)
+                brute_results.append({"Shift Key": shift, "Decrypted Stream Sample": candidate_text})
+            st.dataframe(pd.DataFrame(brute_results), use_container_width=True)
+
+        elif attack_mode == "4. Frequency Distribution Spectrum":
+            st.markdown("#### Intercepted Byte Frequency Spectrum")
+            byte_counts = collections.Counter(raw_bytes)
+            freq_df = pd.DataFrame(
+                [{"Byte (Hex)": f"0x{k:02X}", "Frequency": v} for k, v in byte_counts.most_common(20)]
+            )
+            chart = alt.Chart(freq_df).mark_bar(color='#ff4b4b').encode(
+                x=alt.X('Byte (Hex):N', sort=None, title='Intercepted Byte Vector'),
+                y=alt.Y('Frequency:Q', title='Count'),
+                tooltip=['Byte (Hex)', 'Frequency']
+            ).properties(height=320)
+            st.altair_chart(chart, use_container_width=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
 
 
 
