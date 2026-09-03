@@ -6,7 +6,6 @@ Implement zero-trust database routing with standard client separation and
 
 import os
 import logging
-import hashlib
 from typing import List, Dict, Tuple, Optional, Any
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -40,40 +39,22 @@ class DBManager:
                 "SUPABASE_SERVICE_ROLE_KEY not configured."
                 "Adversary console will operate using standard client permissions."
             )
-    def _get_internal_email(self, username: str)-> str:
-        """Helper: Converts usernames to an internal email for Supabase Auth"""
-        return f"{username}@eve.internal"
 
-    def register_profile(self, username: str, public_key: int) -> Tuple[bool, str]:
+    def register_profile(self, username: str, public_key: str) -> Tuple[bool, str]:
         """
-        Registers a new user and stores their ElGamal public key
-        1. Creates Auth User (for UID generation).
-        2. Creates Profile (binding UID to Username)
+        Registers a new user and stores their ElGamal public key in the public directory.
         """
         try:
-        #Note: Password Derived from public key for demo purpose only
-        #In Production, users must supply an independent password credential
-            fake_password = hashlib.sha256(str(public_key).encode()).hexdigest()
-
-            res = self.client.auth.sign_up({
-                "email": self._get_internal_email(username),
-                "password": fake_password
-            })
-            if not res.user:
-                return False, "Auth registration failed"
             profile_data = {
-                "uid": res.user.id,
                 "username": username,
-                "public_key": str(public_key)
+                "public_key": public_key
             }
             self.client.table("eve_profiles").insert(profile_data).execute()
-
             logger.info(f"Imperial Citizen Registered: {username}")
             return True, "Success"
 
         except APIError as e:
-            if getattr(e, 'code', None) == '23505' or '23505' in str(e):
-                logger.warning(f"Registration failed: Username '{username}' already exists.")
+            if '23505' in str(e):
                 return False, "Username already exists"
 
             logger.error(f"Database error during registration: {e}")
@@ -88,21 +69,24 @@ class DBManager:
             result = self.client.table("eve_profiles") \
                 .select("*") \
                 .eq("username", username) \
+                .single()\
                 .execute()
-            return result.data[0] if result.data else None
+            return result.data if result.data else None
         except Exception as e:
             logger.error(f"Failed to fetch profile for {username}: {e}")
             return None
 
-    def login_user(self, username: str, public_key: int) -> bool:
+    def login_user(self, username: str, public_key: str) -> bool:
         """Logs in using username and public key to activate RLS session."""
         try:
-            fake_password = hashlib.sha256(str(public_key).encode()).hexdigest()
-            res = self.client.auth.sign_in_with_password({
-                "email": self._get_internal_email(username),
-                "password": fake_password
-            })
-            return True if res.session else False
+            result = self.client.table("eve_profiles") \
+                .select("public_key") \
+                .eq("username", username) \
+                .single() \
+                .execute()
+            if result.data:
+                return result.data["public_key"] == public_key
+            return False
         except Exception as e:
             logger.error(f"Login failed: {e}")
             return False

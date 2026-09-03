@@ -239,4 +239,7 @@ it just added 3 classical engines plus some digital signature stuffs that should
 Continue on the UI. making progress, 
 
 (9/3)<br>
-Continue on UI. Orion Ver audit done, now start digging a minor issues.
+Continue on UI. Orion Ver audit done, now start digging a minor issues. I am definately going to fire Orion after this project<br>
+so log in and registration works, but the sending message isn't working I am trying to figure it out because if this is about<br>
+computation issue or the flow is wrong. I will ask tomorrow me handle this. XD<br>
+One thing I like about this is that the login bar is cleaner than previous one, and warning about private key as well. 

@@ -71,7 +71,7 @@ class CryptoEngine:
             y_ephem = secrets.randbelow(self.p - 3) + 2
             c1 = pow(self.g, y_ephem, self.p)
 
-            shared_secret = pow(recipient_public_key, y_ephem, self.p)
+            shared_secret = pow(recipient_public_key, y_ephem)
 
             ciphertext_hex = WireProtocolEngine.pack_message(
                 plaintext=plaintext,
@@ -106,7 +106,7 @@ class CryptoEngine:
             key_data = json.loads(encrypted_key_json)
             c1 = int(key_data['c1'])
 
-            shared_secret = pow(c1, recipient_private_key, self.p)
+            shared_secret = pow(c1, recipient_private_key)
 
             engine_id, plaintext, timestamp = WireProtocolEngine.unpack_message(
                 ciphertext_hex=ciphertext_hex,

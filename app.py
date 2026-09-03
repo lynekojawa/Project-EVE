@@ -37,7 +37,7 @@ with st.sidebar:
 
     if "username" in st.session_state:
         st.success(f"Authenticated as **{st.session_state.username}**")
-        if st.button("Switch User (Logout)", user_container_width=True):
+        if st.button("Switch User (Logout)", use_container_width=True):
             del st.session_state.username
             del st.session_state.my_priv
             st.rerun()
@@ -48,13 +48,15 @@ with st.sidebar:
             if st.button("Register & Generate Keypair", use_container_width=True):
                 if username.strip():
                     pub_key, priv_key = st.session_state.engine.generate_keypair()
-                    success, message = st.session_state.db.register_profile(username.strip(), pub_key)
+                    success, message = st.session_state.db.register_profile(username.strip(), str(pub_key))
                     if success:
                         st.success("Registration Successful!")
                         st.info(f"**Your 1536-bit Private Key:** '{priv_key}'")
                         st.caption("Save this private key securely. This shows up only ONCE")
                         st.session_state.username = username.strip()
-                        st.sessio_state.my_priv = priv_key
+                        st.session_state.my_priv = priv_key
+                        if st.button("I have saved my key — Enter EVE"):
+                            st.rerun()
                     else:
                         st.warning(message)
                 else:
