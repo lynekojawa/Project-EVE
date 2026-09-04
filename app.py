@@ -166,14 +166,17 @@ with col1:
                 else:
                     st.error(f"Recipient '{recipient}' not found.")
 
+
 with col2:
     st.header("📥 Inbox")
+    st.caption("⚠️ Messages are only accessible within 24 hours of transmission. Check your inbox regularly.")
     if "username" in st.session_state:
         if st.button("Refresh Data stream", use_container_width = True):
             st.session_state.inbox_msgs = st.session_state.db.fetch_messages(st.session_state.username)
 
         if "purged_ids" not in st.session_state:
             st.session_state.purged_ids = set()
+
 
         msgs = st.session_state.get("inbox_msgs", [])
         if not msgs:
@@ -193,7 +196,7 @@ with col2:
                 expander_title = f"From {msg['sender']} |  Received: {created_time_str}"
 
                 with st.expander(expander_title, expanded=True):
-                    if dec_result["Success"]:
+                    if dec_result["success"]:
                         st.markdown(f"**Plaintext:** '{dec_result['plaintext']}'")
 
                         b1, b2, b3 = st.columns(3)

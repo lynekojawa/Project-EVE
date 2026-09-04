@@ -243,3 +243,12 @@ Continue on UI. Orion Ver audit done, now start digging a minor issues. I am def
 so log in and registration works, but the sending message isn't working I am trying to figure it out because if this is about<br>
 computation issue or the flow is wrong. I will ask tomorrow me handle this. XD<br>
 One thing I like about this is that the login bar is cleaner than previous one, and warning about private key as well. 
+
+(9/4)<br>
+Debugging in progress.
+So current receive issue is that I have 60s message limit in protocol engine, but this is working like penalizing if the person isn't <br>
+receiving a message an min the message remained as NEVER opened. I am adding more time in it 24 hours, so from now on, user should be able <br>
+to open 24 hours but no after that. I am kinda wondering what is the practice in such case, because I think this isn't what I was thinking<br>
+I still need more study on here! ugh! 
+woohooo it is ready after fixing that self.p EVE mode is working, and analysis runs well! yay! I am going to deploy this soon,
+

@@ -54,7 +54,7 @@ class WireProtocolEngine:
     """
     PROTOCOL_BLOCK_SIZE = 16
     DRIFT_MIN_SECONDS = -30.0 #Allow up to 30s client clock skew behind
-    DRIFT_MAX_SECONDS = 60.0 #Allow up to 60s packet transit delay
+    DRIFT_MAX_SECONDS = 86400.0 #Allow up to 60s packet transit delay
 
     @classmethod
     def _derive_hill_matrix(cls, k_enc: bytes, n: int = 2) -> List[List[int]]:

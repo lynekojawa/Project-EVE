@@ -100,7 +100,8 @@ class DBManager:
                 "ciphertext": ciphertext,
                 "encrypted_key_json": encrypted_key_json
             }
-            self.client.table("eve_messages").insert(data).execute()
+            active_client = self._admin_client if self._admin_client else self.client
+            active_client.table("eve_messages").insert(data).execute()
             logger.info(f"Wire packet uploaded: {sender} -> {recipient}")
             return True
         except Exception as e:
@@ -110,8 +111,9 @@ class DBManager:
     def fetch_messages(self, username: str) -> List[Dict[str, Any]]:
         """Fetches inbox messages addressed to the authenticated recipient"""
         try:
-            result = self.client.table("eve_messages")\
-                        .select("*")\
+            active_client = self._admin_client if self._admin_client else self.client
+            result = active_client.table("eve_messages") \
+                .select("*")\
                         .eq("recipient", username)\
                         .order("created_at", desc=False)\
                         .execute()
@@ -123,7 +125,8 @@ class DBManager:
     def delete_message(self, message_id: str)-> bool:
         """Permanently purges an encrypted message row from cloud storage."""
         try:
-            result = self.client.table("eve_messages").delete().eq("id", message_id).execute()
+            active_client = self._admin_client if self._admin_client else self.client
+            result = active_client.table("eve_messages").delete().eq("id", message_id).execute()
             if result.data:
                 logger.info(f"Purged message ID: {message_id}")
                 return True
