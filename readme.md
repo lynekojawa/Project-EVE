@@ -107,9 +107,10 @@ Private keys are shown once — save them immediately.
 ## 🤝 Project Credits
 This project was developed through a high-entropy collaboration between human intuition and AI orchestration:
 
-| Role | Contributor | Responsibility |
-| :--- | :--- | :--- |
-| **Lead Architect** | lynekojawa (Human) | Core Idea, Audit, Math |
-| **Logic Orchestrator** | PODO (Gemini) | System Design, Logic, Code Review |
-| **Master Planner** | Orion (Gemini) | Strategic Planning |
-| **Code Partner** | Dante (Claude) | Git Strategy, Implementation, Review |
+| Role                   | Contributor         | Responsibility                        |
+|:-----------------------|:--------------------|:--------------------------------------|
+| **Lead Architect**     | lynekojawa (Human)  | Core Idea, Audit, Math                |
+| **Logic Orchestrator** | PODO (Gemini)       | System Design, Logic   |
+| **Master Planner**     | Orion (Gemini)      | Strategic Planning                    |
+| **Code Partner**       | Dante (Claude)      | Git Strategy, Implementation, Review  |
+| **Code Review**        | mini-Dante (Claude) | Implementation, Review, finding Error |
