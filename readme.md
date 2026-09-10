@@ -14,62 +14,102 @@ public keys. Your private key never leaves your machine.
 Register a username → get a public/private keypair → send encrypted 
 messages to other users → decrypt with your private key.
 
-## 🔑 Cryptographic Implementation
-EVE uses a hybrid cryptographic architecture combining asymmetric key exchange and symmetric message encryption.
-- **Key Exchange (Asymmetric):** Implements a 1536-bit ElGamal protocol for secure session key exchange.
-- **Payload Encryption (Symmetric):** Employs a Caesar-shift variant for payload obfuscation, using cryptographically secure random session keys.
-- **Privacy Design:** The server (Supabase) acts as a "blind" repository. Plaintext messages and private keys never touch the database; only ciphertext and public keys are persisted.
+# EVE v2.1 — Architecture
 
-## 🏗️ Architecture & Phases
+## What Changed
 
-### Phase 1 — Crypto Core
-Built the ElGamal engine from scratch: key generation, encrypt/decrypt, 
-modular inverse via iterative extended GCD. Verified full round-trip.
+EVE v1 demonstrated that ElGamal key exchange is cryptographically sound while Caesar encryption is not. The Eve Analysis dashboard proved that point by breaking Caesar in seconds.
 
-### Phase 2 — Backend
-Supabase (PostgreSQL) schema with Row Level Security. Two tables: 
-eve_profiles (public key directory) and eve_messages (ciphertext storage).
+EVE v2.1 takes the next step: a genuinely hardened system. Same client-side key architecture. Same ElGamal key exchange. Everything else upgraded.
 
-### Phase 3 — Full Stack UI
-Streamlit interface connecting crypto engine and database. Register, 
-send, receive, decrypt — end to end working.
+---
 
-### Phase 4 — Eve Analysis 
-Hacker dashboard showing frequency analysis on Caesar ciphertext. 
-Demonstrates why Caesar is entertainment, not security — and why 
-ElGamal key exchange matters.
+## Cipher Factory
 
-## 🛠️ Technical Stack
-- **Frontend:** Streamlit
-- **Backend:** Supabase (PostgreSQL)
-- **Data Analysis:** Pandas, Altair
-- **Crypto:** Python — secrets, json, logging
+Four cipher engines behind a unified interface. Every engine implements the same contract:
 
-## 💡 What I Learned
-This was the most complex project I've built so far. Not because of 
-any single piece — but because I had to manage frontend, backend, 
-cryptographic correctness, and session state simultaneously. 
+```
+encrypt(plaintext, key) → ciphertext
+decrypt(ciphertext, key) → plaintext
+```
 
-Turning academic crypto into a working product is a different skill 
-than understanding the math. I now know both.
+| Engine | Key Type | Notes |
+|---|---|---|
+| Caesar | Integer shift | Legacy baseline |
+| Affine | (a, b) scalar pair | Requires gcd(a, 26) = 1 |
+| Vigenère | String keyword | Polyalphabetic — resists frequency analysis |
+| Hill | n×n invertible matrix | Leverages Determinant Engine finite field arithmetic |
 
-## Recent update
-* Logout feature added
-* Two message deletion mode: Purge(removes from DB, preserves local) and Delete(removes from DB and local)
-* Eve-analysis dashboard complete -- brute force simulation, letter frequency analysis, known plaintext attack demo, combined view panel
+The Hill cipher engine reuses the matrix inversion logic from Project 2 (Determinant Engine) — the first time that tool has been called as a dependency in production code.
 
-### Future Roadmap
-*   **Cipher Update:** Plan to integrate Affine Cipher support into the crypto engine.
+A dynamic UI selector switches engines at session time. Key input fields adapt to the selected cipher type.
 
+---
+
+## Shared-Secret Cipher Identification (SSCI)
+
+The engine used to encrypt a message is not stored in plaintext. Instead, a 1-byte Engine ID is masked using the ElGamal shared secret:
+
+```
+mask = Hash(K)[0]
+stored_header = Engine_ID XOR mask
+```
+
+Without the recipient's private key, an attacker cannot recover K, cannot unmask the header, and cannot determine which cipher was used. This forces blind brute-force across all four engines simultaneously.
+
+---
+
+## Cryptographic Integrity Layer (HMAC-SHA256)
+
+Every message packet carries a 32-byte HMAC-SHA256 tag computed over the ciphertext:
+
+```
+tag = HMAC-SHA256(shared_secret, ciphertext)
+packet = ciphertext || tag
+```
+
+On receipt, the tag is verified before decryption begins. Any tampering with the stored ciphertext — including database-level modification — produces a signature mismatch and triggers a security alert. Confidentiality and integrity are now separate guarantees.
+
+---
+
+## Temporal Defense — Anti-Replay
+
+Unix timestamps are injected into the plaintext before encryption:
+
+```
+P_final = Timestamp || Original_Message
+```
+
+On decryption, if the recovered timestamp falls outside the allowed drift window (> 60 seconds), the message is rejected. Replayed packets — valid ciphertext resent by an attacker — cannot pass this check.
+
+Edge case documented: clock skew between sender and receiver may cause false rejections. Drift window is configurable.
+
+---
+
+## Supabase RLS Re-hardening
+
+Row Level Security re-enabled with strict uid = auth.uid() policies. Users can read and write only their own records. Hacker Mode demonstrations run via Service-Role Key emulation in a sandboxed context — proving the system is secure by design, not by accident.
+
+---
+
+## Project Lineage
+
+| Version | Symmetric Layer | Integrity | Replay Protection | Cipher Obfuscation |
+|---|---|---|---|---|
+| v1.0 | Caesar | None | None | None |
+| v2.1 | Caesar / Affine / Vigenère / Hill | HMAC-SHA256 | Timestamp | SSCI via shared secret |
+
+The Eve Analysis dashboard remains. It now demonstrates why Caesar and Affine fall while Vigenère and Hill resist naive frequency analysis — and why none of them replace modern symmetric encryption.
 ⚠️ This is a cryptographic demo. Do not use real personal information. 
 Private keys are shown once — save them immediately.
 
 ## 🤝 Project Credits
 This project was developed through a high-entropy collaboration between human intuition and AI orchestration:
 
-| Role | Contributor | Responsibility |
-| :--- | :--- | :--- |
-| **Lead Architect** | lynekojawa (Human) | Core Idea, Audit, Math |
-| **Logic Orchestrator** | PODO (Gemini) | System Design, Logic, Code Review |
-| **Master Planner** | Orion (Gemini) | Strategic Planning |
-| **Code Partner** | Dante (Claude) | Git Strategy, Implementation, Review |
+| Role                   | Contributor         | Responsibility                        |
+|:-----------------------|:--------------------|:--------------------------------------|
+| **Lead Architect**     | lynekojawa (Human)  | Core Idea, Audit, Math                |
+| **Logic Orchestrator** | PODO (Gemini)       | System Design, Logic   |
+| **Master Planner**     | Orion (Gemini)      | Strategic Planning                    |
+| **Code Partner**       | Dante (Claude)      | Git Strategy, Implementation, Review  |
+| **Code Review**        | mini-Dante (Claude) | Implementation, Review, finding Error |
