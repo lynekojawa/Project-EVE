@@ -1,5 +1,5 @@
 # Project EVE
-LiveDemo: In reconstruction! see you soon! 
+[![Live Demo](https://img.shields.io/badge/Live-Demo-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://project-eve-hypadrnwddav6olyyq6ay7.streamlit.app/)
 ## 🛡️ Why I Built This
 I studied Cryptography in my undergraduate program and wanted to build 
 something that applies ElGamal to a real product — not just on paper. 
